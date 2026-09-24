@@ -1,0 +1,7 @@
+<Solution>
+  <Project Path="business/business.csproj" />
+  <Project Path="core/core.csproj" />
+  <Project Path="data/data.csproj" />
+  <Project Path="WebApi/WebApi.csproj" />
+  <Project Path="WebMvc/WebMvc.csproj" />
+</Solution>
