@@ -7,7 +7,7 @@ using System.Text;
 
 namespace business.Services
 {
-    public class ExamTemplateService : IExamTemplateRepository
+    public class ExamTemplateService : IExamTemplateService
     {
         private readonly IExamTemplateRepository _examTemplateRepository;
 

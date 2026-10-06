@@ -19,6 +19,8 @@ builder.Services.AddDbContext<AppDbContext>(options =>
 // Repository ve Service DI kayıtları
 builder.Services.AddScoped<IUserRepository, UserRepository>();
 builder.Services.AddScoped<IAuthService, AuthService>();
+builder.Services.AddScoped<IExamTemplateRepository, ExamTemplateRepository>();
+builder.Services.AddScoped<IExamTemplateService, ExamTemplateService>();
 
 // JWT Authentication
 var jwtKey = builder.Configuration["Jwt:Key"]!;
