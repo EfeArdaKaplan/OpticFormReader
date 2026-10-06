@@ -1,6 +1,5 @@
 ﻿using core.DTOs;
 using core.Entities;
-using core.interfaces;
 using core.Interfaces;
 using Microsoft.Extensions.Configuration;
 using Microsoft.IdentityModel.Tokens;
