@@ -1,4 +1,5 @@
 using business.Services;
+using Microsoft.OpenApi;
 using core.Interfaces;
 using data.Context;
 using data.Repositories;
@@ -45,9 +46,22 @@ builder.Services.AddAuthentication(options =>
 
 builder.Services.AddAuthorization();
 
-// Swagger / OpenAPI (basit hali - JWT butonu olmadan, garanti çalışan versiyon)
 builder.Services.AddEndpointsApiExplorer();
-builder.Services.AddSwaggerGen();
+builder.Services.AddSwaggerGen(options =>
+{
+    options.AddSecurityDefinition("Bearer", new OpenApiSecurityScheme
+    {
+        Type = SecuritySchemeType.Http,
+        Scheme = "bearer",
+        BearerFormat = "JWT",
+        Description = "Login'den aldığın token'ı yapıştır (Bearer yazmana gerek yok)"
+    });
+
+    options.AddSecurityRequirement(document => new OpenApiSecurityRequirement
+    {
+        [new OpenApiSecuritySchemeReference("Bearer", document)] = new List<string>()
+    });
+});
 
 var app = builder.Build();
 
