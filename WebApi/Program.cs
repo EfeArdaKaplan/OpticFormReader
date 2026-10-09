@@ -1,11 +1,12 @@
 using business.Services;
-using Microsoft.OpenApi;
+using core.interfaces;
 using core.Interfaces;
 using data.Context;
 using data.Repositories;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
+using Microsoft.OpenApi;
 using System.Text;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -22,6 +23,8 @@ builder.Services.AddScoped<IUserRepository, UserRepository>();
 builder.Services.AddScoped<IAuthService, AuthService>();
 builder.Services.AddScoped<IExamTemplateRepository, ExamTemplateRepository>();
 builder.Services.AddScoped<IExamTemplateService, ExamTemplateService>();
+builder.Services.AddScoped<IExamRepository, ExamRepository>();
+builder.Services.AddScoped<IExamService, ExamService>();
 
 // JWT Authentication
 var jwtKey = builder.Configuration["Jwt:Key"]!;

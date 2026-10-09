@@ -1,13 +1,12 @@
-﻿using core.Entities;
-using System;
-using System.Collections.Generic;
-using System.Text;
+﻿using core.DTOs;
 
-namespace core.interfaces
+namespace core.Interfaces
 {
     public interface IExamService
     {
-        Task<Exam> CreateExamAsync(Exam exam);
-        Task<ExamResult> CalculateResultAsync(int studentSheetId);
+        Task<ExamDto> CreateAsync(int ownerUserId, CreateExamDto request);
+        Task<List<ExamDto>> GetMyExamsAsync(int ownerUserId);
+        Task<ExamDto?> GetByIdAsync(int id, int ownerUserId);
+        Task DeleteAsync(int id, int ownerUserId);
     }
 }
