@@ -25,6 +25,8 @@ builder.Services.AddScoped<IExamTemplateRepository, ExamTemplateRepository>();
 builder.Services.AddScoped<IExamTemplateService, ExamTemplateService>();
 builder.Services.AddScoped<IExamRepository, ExamRepository>();
 builder.Services.AddScoped<IExamService, ExamService>();
+builder.Services.AddScoped<IAnswerKeyRepository, AnswerKeyRepository>();
+builder.Services.AddScoped<IAnswerKeyService, AnswerKeyService>();
 
 // JWT Authentication
 var jwtKey = builder.Configuration["Jwt:Key"]!;

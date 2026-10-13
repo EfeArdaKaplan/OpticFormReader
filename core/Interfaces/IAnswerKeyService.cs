@@ -7,7 +7,7 @@ namespace core.Interfaces
 {
     public interface IAnswerKeyService
     {
-        Task<AnswerKeyDto> SaveManuelAsync(int examId, int ownerUserId, SaveAnswerKeyDto request);
+        Task<AnswerKeyDto> SaveManualAsync(int examId, int ownerUserId, SaveAnswerKeyDto request);
         Task<AnswerKeyDto?> GetByExamIdAsync(int examId, int ownerUserId);
         Task DeleteAsync(int examId, int ownerUserId);
     }
