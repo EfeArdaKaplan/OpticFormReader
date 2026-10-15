@@ -34,16 +34,26 @@ namespace data.Migrations
                         .IsRequired()
                         .HasColumnType("text");
 
+                    b.Property<string>("Booklet")
+                        .IsRequired()
+                        .HasColumnType("text");
+
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("timestamp with time zone");
 
                     b.Property<int>("ExamId")
                         .HasColumnType("integer");
 
+                    b.Property<int>("ExamSectionId")
+                        .HasColumnType("integer");
+
                     b.Property<bool>("IsScanned")
                         .HasColumnType("boolean");
 
                     b.HasKey("Id");
+
+                    b.HasIndex("ExamId", "ExamSectionId", "Booklet")
+                        .IsUnique();
 
                     b.ToTable("AnswerKeys");
                 });
@@ -72,6 +82,9 @@ namespace data.Migrations
                         .IsRequired()
                         .HasColumnType("text");
 
+                    b.Property<double>("TotalScore")
+                        .HasColumnType("double precision");
+
                     b.HasKey("Id");
 
                     b.ToTable("Exams");
@@ -94,6 +107,9 @@ namespace data.Migrations
                     b.Property<int>("EmptyCount")
                         .HasColumnType("integer");
 
+                    b.Property<int>("ExamSectionId")
+                        .HasColumnType("integer");
+
                     b.Property<double>("Score")
                         .HasColumnType("double precision");
 
@@ -108,6 +124,37 @@ namespace data.Migrations
                     b.ToTable("ExamResults");
                 });
 
+            modelBuilder.Entity("core.Entities.ExamSection", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
+
+                    b.Property<int>("ExamTemplateId")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<int>("OptionCount")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("Order")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("QuestionCount")
+                        .HasColumnType("integer");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ExamTemplateId");
+
+                    b.ToTable("ExamSections");
+                });
+
             modelBuilder.Entity("core.Entities.ExamTemplate", b =>
                 {
                     b.Property<int>("Id")
@@ -119,17 +166,26 @@ namespace data.Migrations
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("timestamp with time zone");
 
+                    b.Property<string>("InstitutionName")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("LayoutJson")
+                        .IsRequired()
+                        .HasColumnType("text");
+
                     b.Property<string>("Name")
                         .IsRequired()
                         .HasColumnType("text");
 
-                    b.Property<int>("OptionCount")
-                        .HasColumnType("integer");
-
                     b.Property<int>("OwnerUserId")
                         .HasColumnType("integer");
 
-                    b.Property<int>("QuestionCount")
+                    b.Property<string>("SourceType")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<int>("StudentNoDigits")
                         .HasColumnType("integer");
 
                     b.HasKey("Id");
@@ -147,6 +203,9 @@ namespace data.Migrations
 
                     b.Property<double>("ConfidenceScore")
                         .HasColumnType("double precision");
+
+                    b.Property<int>("ExamSectionId")
+                        .HasColumnType("integer");
 
                     b.Property<int>("QuestionNumber")
                         .HasColumnType("integer");
@@ -171,22 +230,83 @@ namespace data.Migrations
 
                     NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
 
+                    b.Property<string>("Booklet")
+                        .HasColumnType("text");
+
                     b.Property<int>("ExamId")
                         .HasColumnType("integer");
 
-                    b.Property<string>("ImagePath")
+                    b.Property<string>("FirstName")
                         .IsRequired()
                         .HasColumnType("text");
+
+                    b.Property<string>("ImageKey")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("LastName")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<bool>("NeedsReview")
+                        .HasColumnType("boolean");
+
+                    b.Property<int>("PageNumber")
+                        .HasColumnType("integer");
 
                     b.Property<string>("ProcessingStatus")
                         .IsRequired()
                         .HasColumnType("text");
 
-                    b.Property<string>("StudentName")
-                        .IsRequired()
+                    b.Property<string>("ReviewReason")
                         .HasColumnType("text");
 
                     b.Property<string>("StudentNumber")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("TcNo")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<int>("UploadBatchId")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTime>("UploadedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.HasKey("Id");
+
+                    b.ToTable("StudentSheets");
+                });
+
+            modelBuilder.Entity("core.Entities.UploadBatch", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
+
+                    b.Property<int>("ExamId")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("FileKey")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("Format")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("OriginalFileName")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<int>("PageCount")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("ProcessingStatus")
                         .IsRequired()
                         .HasColumnType("text");
 
@@ -195,7 +315,7 @@ namespace data.Migrations
 
                     b.HasKey("Id");
 
-                    b.ToTable("StudentSheets");
+                    b.ToTable("UploadBatches");
                 });
 
             modelBuilder.Entity("core.Entities.User", b =>
@@ -224,6 +344,20 @@ namespace data.Migrations
                     b.HasKey("Id");
 
                     b.ToTable("Users");
+                });
+
+            modelBuilder.Entity("core.Entities.ExamSection", b =>
+                {
+                    b.HasOne("core.Entities.ExamTemplate", null)
+                        .WithMany("Sections")
+                        .HasForeignKey("ExamTemplateId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("core.Entities.ExamTemplate", b =>
+                {
+                    b.Navigation("Sections");
                 });
 #pragma warning restore 612, 618
         }

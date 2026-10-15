@@ -48,7 +48,7 @@ namespace WebApi.Controllers
         {
             var userId = GetCurrentUserId();
             var result = await _answerKeyService.GetByExamIdAsync(examId, userId);
-            if (result == null)
+            if (result.Count == 0)
             {
                 return NotFound(new { message = "Cevap anahtari bulunamadi." });
             }

@@ -2,9 +2,6 @@
 using core.Interfaces;
 using data.Context;
 using Microsoft.EntityFrameworkCore;
-using System;
-using System.Collections.Generic;
-using System.Text;
 
 namespace data.Repositories
 {
@@ -17,30 +14,36 @@ namespace data.Repositories
             _context = context;
         }
 
-        public async Task<AnswerKey?> GetByExamIdAsync(int examId)
+        public async Task<List<AnswerKey>> GetByExamIdAsync(int examId)
         {
-            return await _context.AnswerKeys.FirstOrDefaultAsync(a => a.ExamId == examId);
+            return await _context.AnswerKeys
+                .Where(a => a.ExamId == examId)
+                .OrderBy(a => a.ExamSectionId)
+                .ToListAsync();
         }
 
-        public async Task<AnswerKey> AddAsync(AnswerKey answerKey)
+        public async Task<List<AnswerKey>> ReplaceForExamAsync(int examId, List<AnswerKey> newKeys)
         {
-            _context.AnswerKeys.Add(answerKey);
+            var old = await _context.AnswerKeys
+                .Where(a => a.ExamId == examId)
+                .ToListAsync();
+
+            _context.AnswerKeys.RemoveRange(old);
+            _context.AnswerKeys.AddRange(newKeys);
+
             await _context.SaveChangesAsync();
-            return answerKey;
+            return newKeys;
         }
 
-        public async Task UpdateAsync(AnswerKey answerKey)
+        public async Task DeleteByExamIdAsync(int examId)
         {
-            _context.Entry(answerKey).State = EntityState.Modified;
-            await _context.SaveChangesAsync();
-        }
+            var keys = await _context.AnswerKeys
+                .Where(a => a.ExamId == examId)
+                .ToListAsync();
 
-        public async Task DeleteAsync(int id)
-        {
-            var answerKey = await _context.AnswerKeys.FindAsync(id);
-            if (answerKey != null)
+            if (keys.Count > 0)
             {
-                _context.AnswerKeys.Remove(answerKey);
+                _context.AnswerKeys.RemoveRange(keys);
                 await _context.SaveChangesAsync();
             }
         }

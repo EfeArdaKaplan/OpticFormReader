@@ -1,14 +1,11 @@
 ﻿using core.DTOs;
-using System;
-using System.Collections.Generic;
-using System.Text;
 
 namespace core.Interfaces
 {
     public interface IAnswerKeyService
     {
-        Task<AnswerKeyDto> SaveManualAsync(int examId, int ownerUserId, SaveAnswerKeyDto request);
-        Task<AnswerKeyDto?> GetByExamIdAsync(int examId, int ownerUserId);
+        Task<List<AnswerKeyDto>> SaveManualAsync(int examId, int ownerUserId, SaveAnswerKeyDto request);
+        Task<List<AnswerKeyDto>> GetByExamIdAsync(int examId, int ownerUserId);
         Task DeleteAsync(int examId, int ownerUserId);
     }
 }

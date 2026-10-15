@@ -1,8 +1,4 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Text;
-
-namespace core.Entities
+﻿namespace core.Entities
 {
     public class Exam
     {
@@ -10,7 +6,8 @@ namespace core.Entities
         public int OwnerUserId { get; set; }
         public int ExamTemplateId { get; set; }
         public string Title { get; set; } = string.Empty;
-        public bool IsBulk { get; set; } // Tekli mi Toplu mu giriş
+        public bool IsBulk { get; set; }
+        public double TotalScore { get; set; } = 100;                 // YENİ
         public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
     }
 }

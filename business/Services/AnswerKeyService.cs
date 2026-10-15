@@ -22,7 +22,7 @@ namespace business.Services
             _examTemplateRepository = examTemplateRepository;
         }
 
-        public async Task<AnswerKeyDto> SaveManualAsync(int examId, int ownerUserId, SaveAnswerKeyDto request)
+        public async Task<List<AnswerKeyDto>> SaveManualAsync(int examId, int ownerUserId, SaveAnswerKeyDto request)
         {
             var exam = await GetOwnedExamAsync(examId, ownerUserId);
 
@@ -32,75 +32,98 @@ namespace business.Services
                 throw new Exception("Sınavın şablonu bulunamadı.");
             }
 
-            if (request.Answers.Count != template.QuestionCount)
+            // Her ders tam olarak bir kez gelmeli
+            var incomingIds = request.Sections.Select(s => s.ExamSectionId).ToList();
+            if (incomingIds.Count != incomingIds.Distinct().Count())
             {
-                throw new Exception($"Tüm soruların cevabı girilmelidir. Beklenen: {template.QuestionCount}, gelen: {request.Answers.Count}.");
+                throw new Exception("Aynı ders birden fazla kez gönderilmiş.");
             }
 
-            var validOptions = "ABCDE".Substring(0, template.OptionCount);
-            var normalized = new Dictionary<int, string>();
-
-            foreach (var item in request.Answers)
+            var templateIds = template.Sections.Select(s => s.Id).ToHashSet();
+            if (!templateIds.SetEquals(incomingIds))
             {
-                if (item.Key < 1 || item.Key > template.QuestionCount)
+                throw new Exception("Cevap anahtarında şablondaki tüm dersler eksiksiz olmalıdır.");
+            }
+
+            var newKeys = new List<AnswerKey>();
+
+            foreach (var sectionAnswers in request.Sections)
+            {
+                var section = template.Sections.First(s => s.Id == sectionAnswers.ExamSectionId);
+                var normalized = NormalizeAnswers(section, sectionAnswers.Answers);
+
+                newKeys.Add(new AnswerKey
                 {
-                    throw new Exception($"Geçersiz soru numarası: {item.Key}. Soru numaraları 1 ile {template.QuestionCount} arasında olmalıdır.");
-                }
-
-                var option = (item.Value ?? string.Empty).Trim().ToUpperInvariant();
-                if (option.Length != 1 || !validOptions.Contains(option))
-                {
-                    throw new Exception($"{item.Key}. soru için geçersiz şık: '{item.Value}'. Geçerli şıklar: {string.Join(", ", validOptions.ToCharArray())}.");
-                }
-
-                normalized[item.Key] = option;
+                    ExamId = examId,
+                    ExamSectionId = section.Id,
+                    IsScanned = false,
+                    AnswersJson = JsonSerializer.Serialize(normalized)
+                });
             }
 
-            var json = JsonSerializer.Serialize(normalized);
-
-            var existing = await _answerKeyRepository.GetByExamIdAsync(examId);
-            if (existing != null)
-            {
-                existing.AnswersJson = json;
-                existing.IsScanned = false;
-                await _answerKeyRepository.UpdateAsync(existing);
-                return MapToDto(existing);
-            }
-
-            var answerKey = new AnswerKey
-            {
-                ExamId = examId,
-                IsScanned = false,
-                AnswersJson = json
-            };
-
-            var created = await _answerKeyRepository.AddAsync(answerKey);
-            return MapToDto(created);
+            var saved = await _answerKeyRepository.ReplaceForExamAsync(examId, newKeys);
+            return saved.Select(k => MapToDto(k, template)).ToList();
         }
 
-        public async Task<AnswerKeyDto?> GetByExamIdAsync(int examId, int ownerUserId)
+        public async Task<List<AnswerKeyDto>> GetByExamIdAsync(int examId, int ownerUserId)
         {
             var exam = await _examRepository.GetByIdAsync(examId);
             if (exam == null || exam.OwnerUserId != ownerUserId)
             {
-                return null;
+                return new List<AnswerKeyDto>();
             }
 
-            var answerKey = await _answerKeyRepository.GetByExamIdAsync(examId);
-            return answerKey == null ? null : MapToDto(answerKey);
+            var template = await _examTemplateRepository.GetByIdAsync(exam.ExamTemplateId);
+            if (template == null)
+            {
+                return new List<AnswerKeyDto>();
+            }
+
+            var keys = await _answerKeyRepository.GetByExamIdAsync(examId);
+            return keys.Select(k => MapToDto(k, template)).ToList();
         }
 
         public async Task DeleteAsync(int examId, int ownerUserId)
         {
             await GetOwnedExamAsync(examId, ownerUserId);
 
-            var answerKey = await _answerKeyRepository.GetByExamIdAsync(examId);
-            if (answerKey == null)
+            var keys = await _answerKeyRepository.GetByExamIdAsync(examId);
+            if (keys.Count == 0)
             {
                 throw new Exception("Bu sınav için cevap anahtarı bulunamadı.");
             }
 
-            await _answerKeyRepository.DeleteAsync(answerKey.Id);
+            await _answerKeyRepository.DeleteByExamIdAsync(examId);
+        }
+
+        // Bir dersin cevaplarını doğrular ve büyük harfe çevirir
+        private static Dictionary<int, string> NormalizeAnswers(ExamSection section, Dictionary<int, string> answers)
+        {
+            if (answers.Count != section.QuestionCount)
+            {
+                throw new Exception($"{section.Name} dersinin tüm soruları cevaplanmalıdır. Beklenen: {section.QuestionCount}, gelen: {answers.Count}.");
+            }
+
+            var validOptions = "ABCDE".Substring(0, section.OptionCount);
+            var normalized = new Dictionary<int, string>();
+
+            foreach (var item in answers)
+            {
+                if (item.Key < 1 || item.Key > section.QuestionCount)
+                {
+                    throw new Exception($"{section.Name} dersi için geçersiz soru numarası: {item.Key}. Numaralar 1 ile {section.QuestionCount} arasında olmalıdır.");
+                }
+
+                var option = (item.Value ?? string.Empty).Trim().ToUpperInvariant();
+                if (option.Length != 1 || !validOptions.Contains(option))
+                {
+                    throw new Exception($"{section.Name} dersi {item.Key}. soru için geçersiz şık: '{item.Value}'. Geçerli şıklar: {string.Join(", ", validOptions.ToCharArray())}.");
+                }
+
+                normalized[item.Key] = option;
+            }
+
+            return normalized;
         }
 
         private async Task<Exam> GetOwnedExamAsync(int examId, int ownerUserId)
@@ -113,15 +136,19 @@ namespace business.Services
             return exam;
         }
 
-        private static AnswerKeyDto MapToDto(AnswerKey answerKey)
+        private static AnswerKeyDto MapToDto(AnswerKey key, ExamTemplate template)
         {
+            var sectionName = template.Sections.FirstOrDefault(s => s.Id == key.ExamSectionId)?.Name ?? string.Empty;
+
             return new AnswerKeyDto
             {
-                Id = answerKey.Id,
-                ExamId = answerKey.ExamId,
-                IsScanned = answerKey.IsScanned,
-                Answers = JsonSerializer.Deserialize<Dictionary<int, string>>(answerKey.AnswersJson) ?? new(),
-                CreatedAt = answerKey.CreatedAt
+                Id = key.Id,
+                ExamId = key.ExamId,
+                ExamSectionId = key.ExamSectionId,
+                SectionName = sectionName,
+                IsScanned = key.IsScanned,
+                Answers = JsonSerializer.Deserialize<Dictionary<int, string>>(key.AnswersJson) ?? new(),
+                CreatedAt = key.CreatedAt
             };
         }
     }

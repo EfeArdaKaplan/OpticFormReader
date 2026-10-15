@@ -1,14 +1,13 @@
 ﻿using core.DTOs;
 using core.Entities;
 using core.Interfaces;
-using System;
-using System.Collections.Generic;
-using System.Text;
 
 namespace business.Services
 {
     public class ExamTemplateService : IExamTemplateService
     {
+        private const int MaxTotalQuestions = 150;
+
         private readonly IExamTemplateRepository _examTemplateRepository;
 
         public ExamTemplateService(IExamTemplateRepository examTemplateRepository)
@@ -18,31 +17,17 @@ namespace business.Services
 
         public async Task<ExamTemplateDto> CreateAsync(int ownerUserId, CreateExamTemplateDto request)
         {
-            if (request.QuestionCount <1 || request.QuestionCount > 150)
-            {
-                throw new Exception("Soru sayisi 1 ile 150 arasinda olmalidir.");
-            }
-
-            if (request.OptionCount < 2 || request.OptionCount > 5)
-            {
-                throw new Exception("Şık sayısı 2 ile 5 arasında olmalıdır.");
-            }
-
-            if (string.IsNullOrWhiteSpace(request.Name))
-            {
-                throw new Exception("Şablon ismi boş olamaz.");
-            }
+            Validate(request);
 
             var examTemplate = new ExamTemplate
             {
                 OwnerUserId = ownerUserId,
-                Name = request.Name,
-                QuestionCount = request.QuestionCount,
-                OptionCount = request.OptionCount
+                Name = request.Name.Trim(),
+                StudentNoDigits = request.StudentNoDigits,
+                Sections = BuildSections(request.Sections)
             };
 
             var created = await _examTemplateRepository.AddAsync(examTemplate);
-
             return MapToDto(created);
         }
 
@@ -73,14 +58,17 @@ namespace business.Services
                 throw new Exception("Şablon bulunamadı veya bu şablona erişim yetkiniz yok.");
             }
 
-            if (request.QuestionCount < 1 || request.QuestionCount > 150)
-            {
-                throw new Exception("Soru sayısı 1 ile 150 arasında olmalıdır.");
-            }
+            Validate(request);
 
-            template.Name = request.Name;
-            template.QuestionCount = request.QuestionCount;
-            template.OptionCount = request.OptionCount;
+            template.Name = request.Name.Trim();
+            template.StudentNoDigits = request.StudentNoDigits;
+
+            // Eski dersleri at, yenilerini koy
+            template.Sections.Clear();
+            foreach (var section in BuildSections(request.Sections))
+            {
+                template.Sections.Add(section);
+            }
 
             await _examTemplateRepository.UpdateAsync(template);
         }
@@ -97,14 +85,82 @@ namespace business.Services
             await _examTemplateRepository.DeleteAsync(id);
         }
 
+        private static void Validate(CreateExamTemplateDto request)
+        {
+            if (string.IsNullOrWhiteSpace(request.Name))
+            {
+                throw new Exception("Şablon ismi boş olamaz.");
+            }
+
+            if (request.StudentNoDigits < 1 || request.StudentNoDigits > 11)
+            {
+                throw new Exception("Öğrenci numarası hane sayısı 1 ile 11 arasında olmalıdır.");
+            }
+
+            if (request.Sections == null || request.Sections.Count == 0)
+            {
+                throw new Exception("En az bir ders eklemelisiniz.");
+            }
+
+            foreach (var section in request.Sections)
+            {
+                if (string.IsNullOrWhiteSpace(section.Name))
+                {
+                    throw new Exception("Ders ismi boş olamaz.");
+                }
+
+                if (section.QuestionCount < 1)
+                {
+                    throw new Exception($"{section.Name} dersi için soru sayısı en az 1 olmalıdır.");
+                }
+
+                if (section.OptionCount < 2 || section.OptionCount > 5)
+                {
+                    throw new Exception($"{section.Name} dersi için şık sayısı 2 ile 5 arasında olmalıdır.");
+                }
+            }
+
+            var total = request.Sections.Sum(s => s.QuestionCount);
+            if (total > MaxTotalQuestions)
+            {
+                throw new Exception($"Toplam soru sayısı en fazla {MaxTotalQuestions} olabilir. Girilen: {total}.");
+            }
+        }
+
+        private static List<ExamSection> BuildSections(List<CreateExamSectionDto> dtos)
+        {
+            return dtos
+                .Select((s, index) => new ExamSection
+                {
+                    Name = s.Name.Trim(),
+                    Order = index + 1,
+                    QuestionCount = s.QuestionCount,
+                    OptionCount = s.OptionCount
+                })
+                .ToList();
+        }
+
         private static ExamTemplateDto MapToDto(ExamTemplate template)
         {
+            var sections = template.Sections
+                .OrderBy(s => s.Order)
+                .Select(s => new ExamSectionDto
+                {
+                    Id = s.Id,
+                    Name = s.Name,
+                    Order = s.Order,
+                    QuestionCount = s.QuestionCount,
+                    OptionCount = s.OptionCount
+                })
+                .ToList();
+
             return new ExamTemplateDto
             {
                 Id = template.Id,
                 Name = template.Name,
-                QuestionCount = template.QuestionCount,
-                OptionCount = template.OptionCount,
+                StudentNoDigits = template.StudentNoDigits,
+                TotalQuestionCount = sections.Sum(s => s.QuestionCount),
+                Sections = sections,
                 CreatedAt = template.CreatedAt
             };
         }
