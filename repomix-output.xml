@@ -70,6 +70,7 @@ core/
     ExamTemplate.cs
     StudentAnswer.cs
     StudentSheet.cs
+    UploadBatch.cs
     User.cs
   Enums/
     AnswerOption.cs
@@ -92,6 +93,8 @@ data/
     20260924174039_InitialCreate.Designer.cs
     20261015153854_MultiSectionTemplate.cs
     20261015153854_MultiSectionTemplate.Designer.cs
+    20261015170151_BookletAndSheetFields.cs
+    20261015170151_BookletAndSheetFields.Designer.cs
     AppDbContextModelSnapshot.cs
   Repositories/
     AnswerKeyRepository.cs
@@ -120,45 +123,6 @@ optic.slnx
 
 <files>
 This section contains the contents of the repository's files.
-
-<file path="core/DTOs/CreateExamSectionDto.cs">
-namespace core.DTOs
-{
-    public class CreateExamSectionDto
-    {
-        public string Name { get; set; } = string.Empty;
-        public int QuestionCount { get; set; }
-        public int OptionCount { get; set; } = 5;
-    }
-}
-</file>
-
-<file path="core/DTOs/ExamSectionDto.cs">
-namespace core.DTOs
-{
-    public class ExamSectionDto
-    {
-        public int Id { get; set; }
-        public string Name { get; set; } = string.Empty;
-        public int Order { get; set; }
-        public int QuestionCount { get; set; }
-        public int OptionCount { get; set; }
-    }
-}
-</file>
-
-<file path="core/DTOs/SectionAnswersDto.cs">
-namespace core.DTOs
-{
-    public class SectionAnswersDto
-    {
-        public int ExamSectionId { get; set; }
-
-        // Anahtar: soru numarası (dersin içinde 1'den başlar), değer: doğru şık
-        public Dictionary<int, string> Answers { get; set; } = new();
-    }
-}
-</file>
 
 <file path="core/Interfaces/IExamRepository.cs">
 using core.Entities;
@@ -209,561 +173,6 @@ namespace core.Interfaces
         Task<User> AddAsync(User user);
         Task UpdateAsync(User user);
         Task DeleteAsync(int id);
-    }
-}
-</file>
-
-<file path="data/Migrations/20261015153854_MultiSectionTemplate.cs">
-using Microsoft.EntityFrameworkCore.Migrations;
-using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
-
-#nullable disable
-
-namespace data.Migrations
-{
-    /// <inheritdoc />
-    public partial class MultiSectionTemplate : Migration
-    {
-        /// <inheritdoc />
-        protected override void Up(MigrationBuilder migrationBuilder)
-        {
-            migrationBuilder.DropColumn(
-                name: "OptionCount",
-                table: "ExamTemplates");
-
-            migrationBuilder.RenameColumn(
-                name: "QuestionCount",
-                table: "ExamTemplates",
-                newName: "StudentNoDigits");
-
-            migrationBuilder.AddColumn<string>(
-                name: "LayoutJson",
-                table: "ExamTemplates",
-                type: "text",
-                nullable: false,
-                defaultValue: "");
-
-            migrationBuilder.AddColumn<string>(
-                name: "SourceType",
-                table: "ExamTemplates",
-                type: "text",
-                nullable: false,
-                defaultValue: "");
-
-            migrationBuilder.AddColumn<int>(
-                name: "ExamSectionId",
-                table: "AnswerKeys",
-                type: "integer",
-                nullable: false,
-                defaultValue: 0);
-
-            migrationBuilder.CreateTable(
-                name: "ExamSections",
-                columns: table => new
-                {
-                    Id = table.Column<int>(type: "integer", nullable: false)
-                        .Annotation("Npgsql:ValueGenerationStrategy", NpgsqlValueGenerationStrategy.IdentityByDefaultColumn),
-                    ExamTemplateId = table.Column<int>(type: "integer", nullable: false),
-                    Name = table.Column<string>(type: "text", nullable: false),
-                    Order = table.Column<int>(type: "integer", nullable: false),
-                    QuestionCount = table.Column<int>(type: "integer", nullable: false),
-                    OptionCount = table.Column<int>(type: "integer", nullable: false)
-                },
-                constraints: table =>
-                {
-                    table.PrimaryKey("PK_ExamSections", x => x.Id);
-                    table.ForeignKey(
-                        name: "FK_ExamSections_ExamTemplates_ExamTemplateId",
-                        column: x => x.ExamTemplateId,
-                        principalTable: "ExamTemplates",
-                        principalColumn: "Id",
-                        onDelete: ReferentialAction.Cascade);
-                });
-
-            migrationBuilder.CreateIndex(
-                name: "IX_ExamSections_ExamTemplateId",
-                table: "ExamSections",
-                column: "ExamTemplateId");
-        }
-
-        /// <inheritdoc />
-        protected override void Down(MigrationBuilder migrationBuilder)
-        {
-            migrationBuilder.DropTable(
-                name: "ExamSections");
-
-            migrationBuilder.DropColumn(
-                name: "LayoutJson",
-                table: "ExamTemplates");
-
-            migrationBuilder.DropColumn(
-                name: "SourceType",
-                table: "ExamTemplates");
-
-            migrationBuilder.DropColumn(
-                name: "ExamSectionId",
-                table: "AnswerKeys");
-
-            migrationBuilder.RenameColumn(
-                name: "StudentNoDigits",
-                table: "ExamTemplates",
-                newName: "QuestionCount");
-
-            migrationBuilder.AddColumn<int>(
-                name: "OptionCount",
-                table: "ExamTemplates",
-                type: "integer",
-                nullable: false,
-                defaultValue: 0);
-        }
-    }
-}
-</file>
-
-<file path="data/Migrations/20261015153854_MultiSectionTemplate.Designer.cs">
-// <auto-generated />
-using System;
-using Microsoft.EntityFrameworkCore;
-using Microsoft.EntityFrameworkCore.Infrastructure;
-using Microsoft.EntityFrameworkCore.Migrations;
-using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
-using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
-using data.Context;
-
-#nullable disable
-
-namespace data.Migrations
-{
-    [DbContext(typeof(AppDbContext))]
-    [Migration("20261015153854_MultiSectionTemplate")]
-    partial class MultiSectionTemplate
-    {
-        /// <inheritdoc />
-        protected override void BuildTargetModel(ModelBuilder modelBuilder)
-        {
-#pragma warning disable 612, 618
-            modelBuilder
-                .HasAnnotation("ProductVersion", "10.0.12")
-                .HasAnnotation("Relational:MaxIdentifierLength", 63);
-
-            NpgsqlModelBuilderExtensions.UseIdentityByDefaultColumns(modelBuilder);
-
-            modelBuilder.Entity("core.Entities.AnswerKey", b =>
-                {
-                    b.Property<int>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("integer");
-
-                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
-
-                    b.Property<string>("AnswersJson")
-                        .IsRequired()
-                        .HasColumnType("text");
-
-                    b.Property<DateTime>("CreatedAt")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<int>("ExamId")
-                        .HasColumnType("integer");
-
-                    b.Property<int>("ExamSectionId")
-                        .HasColumnType("integer");
-
-                    b.Property<bool>("IsScanned")
-                        .HasColumnType("boolean");
-
-                    b.HasKey("Id");
-
-                    b.ToTable("AnswerKeys");
-                });
-
-            modelBuilder.Entity("core.Entities.Exam", b =>
-                {
-                    b.Property<int>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("integer");
-
-                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
-
-                    b.Property<DateTime>("CreatedAt")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<int>("ExamTemplateId")
-                        .HasColumnType("integer");
-
-                    b.Property<bool>("IsBulk")
-                        .HasColumnType("boolean");
-
-                    b.Property<int>("OwnerUserId")
-                        .HasColumnType("integer");
-
-                    b.Property<string>("Title")
-                        .IsRequired()
-                        .HasColumnType("text");
-
-                    b.HasKey("Id");
-
-                    b.ToTable("Exams");
-                });
-
-            modelBuilder.Entity("core.Entities.ExamResult", b =>
-                {
-                    b.Property<int>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("integer");
-
-                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
-
-                    b.Property<DateTime>("CalculatedAt")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<int>("CorrectCount")
-                        .HasColumnType("integer");
-
-                    b.Property<int>("EmptyCount")
-                        .HasColumnType("integer");
-
-                    b.Property<double>("Score")
-                        .HasColumnType("double precision");
-
-                    b.Property<int>("StudentSheetId")
-                        .HasColumnType("integer");
-
-                    b.Property<int>("WrongCount")
-                        .HasColumnType("integer");
-
-                    b.HasKey("Id");
-
-                    b.ToTable("ExamResults");
-                });
-
-            modelBuilder.Entity("core.Entities.ExamSection", b =>
-                {
-                    b.Property<int>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("integer");
-
-                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
-
-                    b.Property<int>("ExamTemplateId")
-                        .HasColumnType("integer");
-
-                    b.Property<string>("Name")
-                        .IsRequired()
-                        .HasColumnType("text");
-
-                    b.Property<int>("OptionCount")
-                        .HasColumnType("integer");
-
-                    b.Property<int>("Order")
-                        .HasColumnType("integer");
-
-                    b.Property<int>("QuestionCount")
-                        .HasColumnType("integer");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("ExamTemplateId");
-
-                    b.ToTable("ExamSections");
-                });
-
-            modelBuilder.Entity("core.Entities.ExamTemplate", b =>
-                {
-                    b.Property<int>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("integer");
-
-                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
-
-                    b.Property<DateTime>("CreatedAt")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<string>("LayoutJson")
-                        .IsRequired()
-                        .HasColumnType("text");
-
-                    b.Property<string>("Name")
-                        .IsRequired()
-                        .HasColumnType("text");
-
-                    b.Property<int>("OwnerUserId")
-                        .HasColumnType("integer");
-
-                    b.Property<string>("SourceType")
-                        .IsRequired()
-                        .HasColumnType("text");
-
-                    b.Property<int>("StudentNoDigits")
-                        .HasColumnType("integer");
-
-                    b.HasKey("Id");
-
-                    b.ToTable("ExamTemplates");
-                });
-
-            modelBuilder.Entity("core.Entities.StudentAnswer", b =>
-                {
-                    b.Property<int>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("integer");
-
-                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
-
-                    b.Property<double>("ConfidenceScore")
-                        .HasColumnType("double precision");
-
-                    b.Property<int>("QuestionNumber")
-                        .HasColumnType("integer");
-
-                    b.Property<string>("SelectedOption")
-                        .IsRequired()
-                        .HasColumnType("text");
-
-                    b.Property<int>("StudentSheetId")
-                        .HasColumnType("integer");
-
-                    b.HasKey("Id");
-
-                    b.ToTable("StudentAnswers");
-                });
-
-            modelBuilder.Entity("core.Entities.StudentSheet", b =>
-                {
-                    b.Property<int>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("integer");
-
-                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
-
-                    b.Property<int>("ExamId")
-                        .HasColumnType("integer");
-
-                    b.Property<string>("ImagePath")
-                        .IsRequired()
-                        .HasColumnType("text");
-
-                    b.Property<string>("ProcessingStatus")
-                        .IsRequired()
-                        .HasColumnType("text");
-
-                    b.Property<string>("StudentName")
-                        .IsRequired()
-                        .HasColumnType("text");
-
-                    b.Property<string>("StudentNumber")
-                        .IsRequired()
-                        .HasColumnType("text");
-
-                    b.Property<DateTime>("UploadedAt")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.HasKey("Id");
-
-                    b.ToTable("StudentSheets");
-                });
-
-            modelBuilder.Entity("core.Entities.User", b =>
-                {
-                    b.Property<int>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("integer");
-
-                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
-
-                    b.Property<DateTime>("CreatedAt")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<string>("Email")
-                        .IsRequired()
-                        .HasColumnType("text");
-
-                    b.Property<string>("FullName")
-                        .IsRequired()
-                        .HasColumnType("text");
-
-                    b.Property<string>("PasswordHash")
-                        .IsRequired()
-                        .HasColumnType("text");
-
-                    b.HasKey("Id");
-
-                    b.ToTable("Users");
-                });
-
-            modelBuilder.Entity("core.Entities.ExamSection", b =>
-                {
-                    b.HasOne("core.Entities.ExamTemplate", null)
-                        .WithMany("Sections")
-                        .HasForeignKey("ExamTemplateId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-                });
-
-            modelBuilder.Entity("core.Entities.ExamTemplate", b =>
-                {
-                    b.Navigation("Sections");
-                });
-#pragma warning restore 612, 618
-        }
-    }
-}
-</file>
-
-<file path="business/Services/AnswerKeyService.cs">
-using core.DTOs;
-using core.Entities;
-using core.interfaces;
-using core.Interfaces;
-using System.Text.Json;
-
-namespace business.Services
-{
-    public class AnswerKeyService : IAnswerKeyService
-    {
-        private readonly IAnswerKeyRepository _answerKeyRepository;
-        private readonly IExamRepository _examRepository;
-        private readonly IExamTemplateRepository _examTemplateRepository;
-
-        public AnswerKeyService(
-            IAnswerKeyRepository answerKeyRepository,
-            IExamRepository examRepository,
-            IExamTemplateRepository examTemplateRepository)
-        {
-            _answerKeyRepository = answerKeyRepository;
-            _examRepository = examRepository;
-            _examTemplateRepository = examTemplateRepository;
-        }
-
-        public async Task<List<AnswerKeyDto>> SaveManualAsync(int examId, int ownerUserId, SaveAnswerKeyDto request)
-        {
-            var exam = await GetOwnedExamAsync(examId, ownerUserId);
-
-            var template = await _examTemplateRepository.GetByIdAsync(exam.ExamTemplateId);
-            if (template == null)
-            {
-                throw new Exception("Sınavın şablonu bulunamadı.");
-            }
-
-            // Her ders tam olarak bir kez gelmeli
-            var incomingIds = request.Sections.Select(s => s.ExamSectionId).ToList();
-            if (incomingIds.Count != incomingIds.Distinct().Count())
-            {
-                throw new Exception("Aynı ders birden fazla kez gönderilmiş.");
-            }
-
-            var templateIds = template.Sections.Select(s => s.Id).ToHashSet();
-            if (!templateIds.SetEquals(incomingIds))
-            {
-                throw new Exception("Cevap anahtarında şablondaki tüm dersler eksiksiz olmalıdır.");
-            }
-
-            var newKeys = new List<AnswerKey>();
-
-            foreach (var sectionAnswers in request.Sections)
-            {
-                var section = template.Sections.First(s => s.Id == sectionAnswers.ExamSectionId);
-                var normalized = NormalizeAnswers(section, sectionAnswers.Answers);
-
-                newKeys.Add(new AnswerKey
-                {
-                    ExamId = examId,
-                    ExamSectionId = section.Id,
-                    IsScanned = false,
-                    AnswersJson = JsonSerializer.Serialize(normalized)
-                });
-            }
-
-            var saved = await _answerKeyRepository.ReplaceForExamAsync(examId, newKeys);
-            return saved.Select(k => MapToDto(k, template)).ToList();
-        }
-
-        public async Task<List<AnswerKeyDto>> GetByExamIdAsync(int examId, int ownerUserId)
-        {
-            var exam = await _examRepository.GetByIdAsync(examId);
-            if (exam == null || exam.OwnerUserId != ownerUserId)
-            {
-                return new List<AnswerKeyDto>();
-            }
-
-            var template = await _examTemplateRepository.GetByIdAsync(exam.ExamTemplateId);
-            if (template == null)
-            {
-                return new List<AnswerKeyDto>();
-            }
-
-            var keys = await _answerKeyRepository.GetByExamIdAsync(examId);
-            return keys.Select(k => MapToDto(k, template)).ToList();
-        }
-
-        public async Task DeleteAsync(int examId, int ownerUserId)
-        {
-            await GetOwnedExamAsync(examId, ownerUserId);
-
-            var keys = await _answerKeyRepository.GetByExamIdAsync(examId);
-            if (keys.Count == 0)
-            {
-                throw new Exception("Bu sınav için cevap anahtarı bulunamadı.");
-            }
-
-            await _answerKeyRepository.DeleteByExamIdAsync(examId);
-        }
-
-        // Bir dersin cevaplarını doğrular ve büyük harfe çevirir
-        private static Dictionary<int, string> NormalizeAnswers(ExamSection section, Dictionary<int, string> answers)
-        {
-            if (answers.Count != section.QuestionCount)
-            {
-                throw new Exception($"{section.Name} dersinin tüm soruları cevaplanmalıdır. Beklenen: {section.QuestionCount}, gelen: {answers.Count}.");
-            }
-
-            var validOptions = "ABCDE".Substring(0, section.OptionCount);
-            var normalized = new Dictionary<int, string>();
-
-            foreach (var item in answers)
-            {
-                if (item.Key < 1 || item.Key > section.QuestionCount)
-                {
-                    throw new Exception($"{section.Name} dersi için geçersiz soru numarası: {item.Key}. Numaralar 1 ile {section.QuestionCount} arasında olmalıdır.");
-                }
-
-                var option = (item.Value ?? string.Empty).Trim().ToUpperInvariant();
-                if (option.Length != 1 || !validOptions.Contains(option))
-                {
-                    throw new Exception($"{section.Name} dersi {item.Key}. soru için geçersiz şık: '{item.Value}'. Geçerli şıklar: {string.Join(", ", validOptions.ToCharArray())}.");
-                }
-
-                normalized[item.Key] = option;
-            }
-
-            return normalized;
-        }
-
-        private async Task<Exam> GetOwnedExamAsync(int examId, int ownerUserId)
-        {
-            var exam = await _examRepository.GetByIdAsync(examId);
-            if (exam == null || exam.OwnerUserId != ownerUserId)
-            {
-                throw new Exception("Sınav bulunamadı veya bu sınava erişim yetkiniz yok.");
-            }
-            return exam;
-        }
-
-        private static AnswerKeyDto MapToDto(AnswerKey key, ExamTemplate template)
-        {
-            var sectionName = template.Sections.FirstOrDefault(s => s.Id == key.ExamSectionId)?.Name ?? string.Empty;
-
-            return new AnswerKeyDto
-            {
-                Id = key.Id,
-                ExamId = key.ExamId,
-                ExamSectionId = key.ExamSectionId,
-                SectionName = sectionName,
-                IsScanned = key.IsScanned,
-                Answers = JsonSerializer.Deserialize<Dictionary<int, string>>(key.AnswersJson) ?? new(),
-                CreatedAt = key.CreatedAt
-            };
-        }
     }
 }
 </file>
@@ -857,22 +266,6 @@ namespace business.Services
 }
 </file>
 
-<file path="core/DTOs/AnswerKeyDto.cs">
-namespace core.DTOs
-{
-    public class AnswerKeyDto
-    {
-        public int Id { get; set; }
-        public int ExamId { get; set; }
-        public int ExamSectionId { get; set; }
-        public string SectionName { get; set; } = string.Empty;
-        public bool IsScanned { get; set; }
-        public Dictionary<int, string> Answers { get; set; } = new();
-        public DateTime CreatedAt { get; set; }
-    }
-}
-</file>
-
 <file path="core/DTOs/CreateExamDto.cs">
 namespace core.DTOs
 {
@@ -885,14 +278,14 @@ namespace core.DTOs
 }
 </file>
 
-<file path="core/DTOs/CreateExamTemplateDto.cs">
+<file path="core/DTOs/CreateExamSectionDto.cs">
 namespace core.DTOs
 {
-    public class CreateExamTemplateDto
+    public class CreateExamSectionDto
     {
         public string Name { get; set; } = string.Empty;
-        public int StudentNoDigits { get; set; } = 11;
-        public List<CreateExamSectionDto> Sections { get; set; } = new();
+        public int QuestionCount { get; set; }
+        public int OptionCount { get; set; } = 5;
     }
 }
 </file>
@@ -931,17 +324,16 @@ namespace core.DTOs
 }
 </file>
 
-<file path="core/DTOs/ExamTemplateDto.cs">
+<file path="core/DTOs/ExamSectionDto.cs">
 namespace core.DTOs
 {
-    public class ExamTemplateDto
+    public class ExamSectionDto
     {
         public int Id { get; set; }
         public string Name { get; set; } = string.Empty;
-        public int StudentNoDigits { get; set; }
-        public int TotalQuestionCount { get; set; }
-        public List<ExamSectionDto> Sections { get; set; } = new();
-        public DateTime CreatedAt { get; set; }
+        public int Order { get; set; }
+        public int QuestionCount { get; set; }
+        public int OptionCount { get; set; }
     }
 }
 </file>
@@ -993,51 +385,15 @@ namespace core.DTOs
 }
 </file>
 
-<file path="core/DTOs/SaveAnswerKeyDto.cs">
+<file path="core/DTOs/SectionAnswersDto.cs">
 namespace core.DTOs
 {
-    public class SaveAnswerKeyDto
+    public class SectionAnswersDto
     {
-        public List<SectionAnswersDto> Sections { get; set; } = new();
-    }
-}
-</file>
+        public int ExamSectionId { get; set; }
 
-<file path="core/Entities/Exam.cs">
-using System;
-using System.Collections.Generic;
-using System.Text;
-
-namespace core.Entities
-{
-    public class Exam
-    {
-        public int Id { get; set; }
-        public int OwnerUserId { get; set; }
-        public int ExamTemplateId { get; set; }
-        public string Title { get; set; } = string.Empty;
-        public bool IsBulk { get; set; } // Tekli mi Toplu mu giriş
-        public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
-    }
-}
-</file>
-
-<file path="core/Entities/ExamResult.cs">
-using System;
-using System.Collections.Generic;
-using System.Text;
-
-namespace core.Entities
-{
-    public class ExamResult
-    {
-        public int Id { get; set; }
-        public int StudentSheetId { get; set; }
-        public int CorrectCount { get; set; }
-        public int WrongCount { get; set; }
-        public int EmptyCount { get; set; }
-        public double Score { get; set; }
-        public DateTime CalculatedAt { get; set; } = DateTime.UtcNow;
+        // Anahtar: soru numarası (dersin içinde 1'den başlar), değer: doğru şık
+        public Dictionary<int, string> Answers { get; set; } = new();
     }
 }
 </file>
@@ -1062,39 +418,19 @@ namespace core.Entities
 }
 </file>
 
-<file path="core/Entities/StudentAnswer.cs">
-using System;
-using System.Collections.Generic;
-using System.Text;
-
+<file path="core/Entities/UploadBatch.cs">
 namespace core.Entities
 {
-    public class StudentAnswer
-    {
-        public int Id { get; set; }
-        public int StudentSheetId { get; set; }
-        public int QuestionNumber { get; set; }
-        public string SelectedOption { get; set; } = string.Empty; // A, B, C, D, E, boş, belirsiz
-        public double ConfidenceScore { get; set; } // güven skoru
-    }
-}
-</file>
-
-<file path="core/Entities/StudentSheet.cs">
-using System;
-using System.Collections.Generic;
-using System.Text;
-
-namespace core.Entities
-{
-    public class StudentSheet
+    // Kullanıcının yüklediği her dosya (PDF veya görüntü) için bir kayıt
+    public class UploadBatch
     {
         public int Id { get; set; }
         public int ExamId { get; set; }
-        public string StudentNumber { get; set; } = string.Empty;
-        public string StudentName { get; set; } = string.Empty;
-        public string ImagePath { get; set; } = string.Empty;
-        public string ProcessingStatus { get; set; } = "Pending"; // Pending, Processing, Done, Error
+        public string OriginalFileName { get; set; } = string.Empty;
+        public string Format { get; set; } = string.Empty;           // PDF, JPG, PNG
+        public string FileKey { get; set; } = string.Empty;          // SeaweedFS'teki anahtar
+        public int PageCount { get; set; }                           // PDF'te sayfa sayısı, görüntüde 1
+        public string ProcessingStatus { get; set; } = "Pending";    // Pending, Processing, Done, Error
         public DateTime UploadedAt { get; set; } = DateTime.UtcNow;
     }
 }
@@ -1151,20 +487,6 @@ namespace core.Enums
         Processing,
         Done,
         Error
-    }
-}
-</file>
-
-<file path="core/Interfaces/IAnswerKeyRepository.cs">
-using core.Entities;
-
-namespace core.Interfaces
-{
-    public interface IAnswerKeyRepository
-    {
-        Task<List<AnswerKey>> GetByExamIdAsync(int examId);
-        Task<List<AnswerKey>> ReplaceForExamAsync(int examId, List<AnswerKey> newKeys);
-        Task DeleteByExamIdAsync(int examId);
     }
 }
 </file>
@@ -1234,41 +556,6 @@ namespace core.Interfaces
   </PropertyGroup>
 
 </Project>
-</file>
-
-<file path="data/Context/AppDbContext.cs">
-using core.Entities;
-using Microsoft.EntityFrameworkCore;
-
-namespace data.Context
-{
-    public class AppDbContext : DbContext
-    {
-        public AppDbContext(DbContextOptions<AppDbContext> options) : base(options)
-        {
-        }
-
-        public DbSet<User> Users { get; set; }
-        public DbSet<ExamTemplate> ExamTemplates { get; set; }
-        public DbSet<ExamSection> ExamSections { get; set; }
-        public DbSet<Exam> Exams { get; set; }
-        public DbSet<AnswerKey> AnswerKeys { get; set; }
-        public DbSet<StudentSheet> StudentSheets { get; set; }
-        public DbSet<StudentAnswer> StudentAnswers { get; set; }
-        public DbSet<ExamResult> ExamResults { get; set; }
-
-        protected override void OnModelCreating(ModelBuilder modelBuilder)
-        {
-            base.OnModelCreating(modelBuilder);
-
-            modelBuilder.Entity<ExamSection>()
-                .HasOne<ExamTemplate>()
-                .WithMany(t => t.Sections)
-                .HasForeignKey(s => s.ExamTemplateId)
-                .OnDelete(DeleteBehavior.Cascade);
-        }
-    }
-}
 </file>
 
 <file path="data/Migrations/20260924174039_InitialCreate.cs">
@@ -1670,11 +957,119 @@ namespace data.Migrations
 }
 </file>
 
-<file path="data/Migrations/AppDbContextModelSnapshot.cs">
+<file path="data/Migrations/20261015153854_MultiSectionTemplate.cs">
+using Microsoft.EntityFrameworkCore.Migrations;
+using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
+
+#nullable disable
+
+namespace data.Migrations
+{
+    /// <inheritdoc />
+    public partial class MultiSectionTemplate : Migration
+    {
+        /// <inheritdoc />
+        protected override void Up(MigrationBuilder migrationBuilder)
+        {
+            migrationBuilder.DropColumn(
+                name: "OptionCount",
+                table: "ExamTemplates");
+
+            migrationBuilder.RenameColumn(
+                name: "QuestionCount",
+                table: "ExamTemplates",
+                newName: "StudentNoDigits");
+
+            migrationBuilder.AddColumn<string>(
+                name: "LayoutJson",
+                table: "ExamTemplates",
+                type: "text",
+                nullable: false,
+                defaultValue: "");
+
+            migrationBuilder.AddColumn<string>(
+                name: "SourceType",
+                table: "ExamTemplates",
+                type: "text",
+                nullable: false,
+                defaultValue: "");
+
+            migrationBuilder.AddColumn<int>(
+                name: "ExamSectionId",
+                table: "AnswerKeys",
+                type: "integer",
+                nullable: false,
+                defaultValue: 0);
+
+            migrationBuilder.CreateTable(
+                name: "ExamSections",
+                columns: table => new
+                {
+                    Id = table.Column<int>(type: "integer", nullable: false)
+                        .Annotation("Npgsql:ValueGenerationStrategy", NpgsqlValueGenerationStrategy.IdentityByDefaultColumn),
+                    ExamTemplateId = table.Column<int>(type: "integer", nullable: false),
+                    Name = table.Column<string>(type: "text", nullable: false),
+                    Order = table.Column<int>(type: "integer", nullable: false),
+                    QuestionCount = table.Column<int>(type: "integer", nullable: false),
+                    OptionCount = table.Column<int>(type: "integer", nullable: false)
+                },
+                constraints: table =>
+                {
+                    table.PrimaryKey("PK_ExamSections", x => x.Id);
+                    table.ForeignKey(
+                        name: "FK_ExamSections_ExamTemplates_ExamTemplateId",
+                        column: x => x.ExamTemplateId,
+                        principalTable: "ExamTemplates",
+                        principalColumn: "Id",
+                        onDelete: ReferentialAction.Cascade);
+                });
+
+            migrationBuilder.CreateIndex(
+                name: "IX_ExamSections_ExamTemplateId",
+                table: "ExamSections",
+                column: "ExamTemplateId");
+        }
+
+        /// <inheritdoc />
+        protected override void Down(MigrationBuilder migrationBuilder)
+        {
+            migrationBuilder.DropTable(
+                name: "ExamSections");
+
+            migrationBuilder.DropColumn(
+                name: "LayoutJson",
+                table: "ExamTemplates");
+
+            migrationBuilder.DropColumn(
+                name: "SourceType",
+                table: "ExamTemplates");
+
+            migrationBuilder.DropColumn(
+                name: "ExamSectionId",
+                table: "AnswerKeys");
+
+            migrationBuilder.RenameColumn(
+                name: "StudentNoDigits",
+                table: "ExamTemplates",
+                newName: "QuestionCount");
+
+            migrationBuilder.AddColumn<int>(
+                name: "OptionCount",
+                table: "ExamTemplates",
+                type: "integer",
+                nullable: false,
+                defaultValue: 0);
+        }
+    }
+}
+</file>
+
+<file path="data/Migrations/20261015153854_MultiSectionTemplate.Designer.cs">
 // <auto-generated />
 using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 using data.Context;
@@ -1684,9 +1079,11 @@ using data.Context;
 namespace data.Migrations
 {
     [DbContext(typeof(AppDbContext))]
-    partial class AppDbContextModelSnapshot : ModelSnapshot
+    [Migration("20261015153854_MultiSectionTemplate")]
+    partial class MultiSectionTemplate
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -1957,55 +1354,577 @@ namespace data.Migrations
 }
 </file>
 
-<file path="data/Repositories/AnswerKeyRepository.cs">
-using core.Entities;
-using core.Interfaces;
-using data.Context;
-using Microsoft.EntityFrameworkCore;
+<file path="data/Migrations/20261015170151_BookletAndSheetFields.cs">
+using System;
+using Microsoft.EntityFrameworkCore.Migrations;
+using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 
-namespace data.Repositories
+#nullable disable
+
+namespace data.Migrations
 {
-    public class AnswerKeyRepository : IAnswerKeyRepository
+    /// <inheritdoc />
+    public partial class BookletAndSheetFields : Migration
     {
-        private readonly AppDbContext _context;
-
-        public AnswerKeyRepository(AppDbContext context)
+        /// <inheritdoc />
+        protected override void Up(MigrationBuilder migrationBuilder)
         {
-            _context = context;
+            migrationBuilder.RenameColumn(
+                name: "StudentName",
+                table: "StudentSheets",
+                newName: "TcNo");
+
+            migrationBuilder.RenameColumn(
+                name: "ImagePath",
+                table: "StudentSheets",
+                newName: "LastName");
+
+            migrationBuilder.AddColumn<string>(
+                name: "Booklet",
+                table: "StudentSheets",
+                type: "text",
+                nullable: true);
+
+            migrationBuilder.AddColumn<string>(
+                name: "FirstName",
+                table: "StudentSheets",
+                type: "text",
+                nullable: false,
+                defaultValue: "");
+
+            migrationBuilder.AddColumn<string>(
+                name: "ImageKey",
+                table: "StudentSheets",
+                type: "text",
+                nullable: false,
+                defaultValue: "");
+
+            migrationBuilder.AddColumn<bool>(
+                name: "NeedsReview",
+                table: "StudentSheets",
+                type: "boolean",
+                nullable: false,
+                defaultValue: false);
+
+            migrationBuilder.AddColumn<int>(
+                name: "PageNumber",
+                table: "StudentSheets",
+                type: "integer",
+                nullable: false,
+                defaultValue: 0);
+
+            migrationBuilder.AddColumn<string>(
+                name: "ReviewReason",
+                table: "StudentSheets",
+                type: "text",
+                nullable: true);
+
+            migrationBuilder.AddColumn<int>(
+                name: "UploadBatchId",
+                table: "StudentSheets",
+                type: "integer",
+                nullable: false,
+                defaultValue: 0);
+
+            migrationBuilder.AddColumn<int>(
+                name: "ExamSectionId",
+                table: "StudentAnswers",
+                type: "integer",
+                nullable: false,
+                defaultValue: 0);
+
+            migrationBuilder.AddColumn<string>(
+                name: "InstitutionName",
+                table: "ExamTemplates",
+                type: "text",
+                nullable: false,
+                defaultValue: "");
+
+            migrationBuilder.AddColumn<double>(
+                name: "TotalScore",
+                table: "Exams",
+                type: "double precision",
+                nullable: false,
+                defaultValue: 0.0);
+
+            migrationBuilder.AddColumn<int>(
+                name: "ExamSectionId",
+                table: "ExamResults",
+                type: "integer",
+                nullable: false,
+                defaultValue: 0);
+
+            migrationBuilder.AddColumn<string>(
+                name: "Booklet",
+                table: "AnswerKeys",
+                type: "text",
+                nullable: false,
+                defaultValue: "");
+
+            migrationBuilder.CreateTable(
+                name: "UploadBatches",
+                columns: table => new
+                {
+                    Id = table.Column<int>(type: "integer", nullable: false)
+                        .Annotation("Npgsql:ValueGenerationStrategy", NpgsqlValueGenerationStrategy.IdentityByDefaultColumn),
+                    ExamId = table.Column<int>(type: "integer", nullable: false),
+                    OriginalFileName = table.Column<string>(type: "text", nullable: false),
+                    Format = table.Column<string>(type: "text", nullable: false),
+                    FileKey = table.Column<string>(type: "text", nullable: false),
+                    PageCount = table.Column<int>(type: "integer", nullable: false),
+                    ProcessingStatus = table.Column<string>(type: "text", nullable: false),
+                    UploadedAt = table.Column<DateTime>(type: "timestamp with time zone", nullable: false)
+                },
+                constraints: table =>
+                {
+                    table.PrimaryKey("PK_UploadBatches", x => x.Id);
+                });
+
+            migrationBuilder.CreateIndex(
+                name: "IX_AnswerKeys_ExamId_ExamSectionId_Booklet",
+                table: "AnswerKeys",
+                columns: new[] { "ExamId", "ExamSectionId", "Booklet" },
+                unique: true);
         }
 
-        public async Task<List<AnswerKey>> GetByExamIdAsync(int examId)
+        /// <inheritdoc />
+        protected override void Down(MigrationBuilder migrationBuilder)
         {
-            return await _context.AnswerKeys
-                .Where(a => a.ExamId == examId)
-                .OrderBy(a => a.ExamSectionId)
-                .ToListAsync();
+            migrationBuilder.DropTable(
+                name: "UploadBatches");
+
+            migrationBuilder.DropIndex(
+                name: "IX_AnswerKeys_ExamId_ExamSectionId_Booklet",
+                table: "AnswerKeys");
+
+            migrationBuilder.DropColumn(
+                name: "Booklet",
+                table: "StudentSheets");
+
+            migrationBuilder.DropColumn(
+                name: "FirstName",
+                table: "StudentSheets");
+
+            migrationBuilder.DropColumn(
+                name: "ImageKey",
+                table: "StudentSheets");
+
+            migrationBuilder.DropColumn(
+                name: "NeedsReview",
+                table: "StudentSheets");
+
+            migrationBuilder.DropColumn(
+                name: "PageNumber",
+                table: "StudentSheets");
+
+            migrationBuilder.DropColumn(
+                name: "ReviewReason",
+                table: "StudentSheets");
+
+            migrationBuilder.DropColumn(
+                name: "UploadBatchId",
+                table: "StudentSheets");
+
+            migrationBuilder.DropColumn(
+                name: "ExamSectionId",
+                table: "StudentAnswers");
+
+            migrationBuilder.DropColumn(
+                name: "InstitutionName",
+                table: "ExamTemplates");
+
+            migrationBuilder.DropColumn(
+                name: "TotalScore",
+                table: "Exams");
+
+            migrationBuilder.DropColumn(
+                name: "ExamSectionId",
+                table: "ExamResults");
+
+            migrationBuilder.DropColumn(
+                name: "Booklet",
+                table: "AnswerKeys");
+
+            migrationBuilder.RenameColumn(
+                name: "TcNo",
+                table: "StudentSheets",
+                newName: "StudentName");
+
+            migrationBuilder.RenameColumn(
+                name: "LastName",
+                table: "StudentSheets",
+                newName: "ImagePath");
         }
+    }
+}
+</file>
 
-        public async Task<List<AnswerKey>> ReplaceForExamAsync(int examId, List<AnswerKey> newKeys)
+<file path="data/Migrations/20261015170151_BookletAndSheetFields.Designer.cs">
+// <auto-generated />
+using System;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
+using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
+using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
+using data.Context;
+
+#nullable disable
+
+namespace data.Migrations
+{
+    [DbContext(typeof(AppDbContext))]
+    [Migration("20261015170151_BookletAndSheetFields")]
+    partial class BookletAndSheetFields
+    {
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
-            var old = await _context.AnswerKeys
-                .Where(a => a.ExamId == examId)
-                .ToListAsync();
+#pragma warning disable 612, 618
+            modelBuilder
+                .HasAnnotation("ProductVersion", "10.0.12")
+                .HasAnnotation("Relational:MaxIdentifierLength", 63);
 
-            _context.AnswerKeys.RemoveRange(old);
-            _context.AnswerKeys.AddRange(newKeys);
+            NpgsqlModelBuilderExtensions.UseIdentityByDefaultColumns(modelBuilder);
 
-            await _context.SaveChangesAsync();
-            return newKeys;
-        }
+            modelBuilder.Entity("core.Entities.AnswerKey", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer");
 
-        public async Task DeleteByExamIdAsync(int examId)
-        {
-            var keys = await _context.AnswerKeys
-                .Where(a => a.ExamId == examId)
-                .ToListAsync();
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
 
-            if (keys.Count > 0)
-            {
-                _context.AnswerKeys.RemoveRange(keys);
-                await _context.SaveChangesAsync();
-            }
+                    b.Property<string>("AnswersJson")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("Booklet")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<int>("ExamId")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("ExamSectionId")
+                        .HasColumnType("integer");
+
+                    b.Property<bool>("IsScanned")
+                        .HasColumnType("boolean");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ExamId", "ExamSectionId", "Booklet")
+                        .IsUnique();
+
+                    b.ToTable("AnswerKeys");
+                });
+
+            modelBuilder.Entity("core.Entities.Exam", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<int>("ExamTemplateId")
+                        .HasColumnType("integer");
+
+                    b.Property<bool>("IsBulk")
+                        .HasColumnType("boolean");
+
+                    b.Property<int>("OwnerUserId")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("Title")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<double>("TotalScore")
+                        .HasColumnType("double precision");
+
+                    b.HasKey("Id");
+
+                    b.ToTable("Exams");
+                });
+
+            modelBuilder.Entity("core.Entities.ExamResult", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
+
+                    b.Property<DateTime>("CalculatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<int>("CorrectCount")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("EmptyCount")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("ExamSectionId")
+                        .HasColumnType("integer");
+
+                    b.Property<double>("Score")
+                        .HasColumnType("double precision");
+
+                    b.Property<int>("StudentSheetId")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("WrongCount")
+                        .HasColumnType("integer");
+
+                    b.HasKey("Id");
+
+                    b.ToTable("ExamResults");
+                });
+
+            modelBuilder.Entity("core.Entities.ExamSection", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
+
+                    b.Property<int>("ExamTemplateId")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<int>("OptionCount")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("Order")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("QuestionCount")
+                        .HasColumnType("integer");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ExamTemplateId");
+
+                    b.ToTable("ExamSections");
+                });
+
+            modelBuilder.Entity("core.Entities.ExamTemplate", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("InstitutionName")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("LayoutJson")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<int>("OwnerUserId")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("SourceType")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<int>("StudentNoDigits")
+                        .HasColumnType("integer");
+
+                    b.HasKey("Id");
+
+                    b.ToTable("ExamTemplates");
+                });
+
+            modelBuilder.Entity("core.Entities.StudentAnswer", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
+
+                    b.Property<double>("ConfidenceScore")
+                        .HasColumnType("double precision");
+
+                    b.Property<int>("ExamSectionId")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("QuestionNumber")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("SelectedOption")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<int>("StudentSheetId")
+                        .HasColumnType("integer");
+
+                    b.HasKey("Id");
+
+                    b.ToTable("StudentAnswers");
+                });
+
+            modelBuilder.Entity("core.Entities.StudentSheet", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
+
+                    b.Property<string>("Booklet")
+                        .HasColumnType("text");
+
+                    b.Property<int>("ExamId")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("FirstName")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("ImageKey")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("LastName")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<bool>("NeedsReview")
+                        .HasColumnType("boolean");
+
+                    b.Property<int>("PageNumber")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("ProcessingStatus")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("ReviewReason")
+                        .HasColumnType("text");
+
+                    b.Property<string>("StudentNumber")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("TcNo")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<int>("UploadBatchId")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTime>("UploadedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.HasKey("Id");
+
+                    b.ToTable("StudentSheets");
+                });
+
+            modelBuilder.Entity("core.Entities.UploadBatch", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
+
+                    b.Property<int>("ExamId")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("FileKey")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("Format")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("OriginalFileName")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<int>("PageCount")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("ProcessingStatus")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<DateTime>("UploadedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.HasKey("Id");
+
+                    b.ToTable("UploadBatches");
+                });
+
+            modelBuilder.Entity("core.Entities.User", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("Email")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("FullName")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("PasswordHash")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.HasKey("Id");
+
+                    b.ToTable("Users");
+                });
+
+            modelBuilder.Entity("core.Entities.ExamSection", b =>
+                {
+                    b.HasOne("core.Entities.ExamTemplate", null)
+                        .WithMany("Sections")
+                        .HasForeignKey("ExamTemplateId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("core.Entities.ExamTemplate", b =>
+                {
+                    b.Navigation("Sections");
+                });
+#pragma warning restore 612, 618
         }
     }
 }
@@ -2062,65 +1981,6 @@ namespace data.Repositories
             if (exam != null)
             {
                 _context.Exams.Remove(exam);
-                await _context.SaveChangesAsync();
-            }
-        }
-    }
-}
-</file>
-
-<file path="data/Repositories/ExamTemplateRepository.cs">
-using core.Entities;
-using core.Interfaces;
-using data.Context;
-using Microsoft.EntityFrameworkCore;
-
-namespace data.Repositories
-{
-    public class ExamTemplateRepository : IExamTemplateRepository
-    {
-        private readonly AppDbContext _context;
-
-        public ExamTemplateRepository(AppDbContext context)
-        {
-            _context = context;
-        }
-
-        public async Task<ExamTemplate?> GetByIdAsync(int id)
-        {
-            return await _context.ExamTemplates
-                .Include(t => t.Sections)
-                .FirstOrDefaultAsync(t => t.Id == id);
-        }
-
-        public async Task<List<ExamTemplate>> GetByOwnerUserIdAsync(int ownerUserId)
-        {
-            return await _context.ExamTemplates
-                .Include(t => t.Sections)
-                .Where(t => t.OwnerUserId == ownerUserId)
-                .ToListAsync();
-        }
-
-        public async Task<ExamTemplate> AddAsync(ExamTemplate examTemplate)
-        {
-            _context.ExamTemplates.Add(examTemplate);
-            await _context.SaveChangesAsync();
-            return examTemplate;
-        }
-
-        public async Task UpdateAsync(ExamTemplate examTemplate)
-        {
-            // GetByIdAsync ile çekilen şablon zaten EF tarafından takip ediliyor,
-            // yapılan değişiklikleri (yeni/silinen dersler dahil) SaveChanges kaydeder.
-            await _context.SaveChangesAsync();
-        }
-
-        public async Task DeleteAsync(int id)
-        {
-            var examTemplate = await _context.ExamTemplates.FindAsync(id);
-            if (examTemplate != null)
-            {
-                _context.ExamTemplates.Remove(examTemplate);
                 await _context.SaveChangesAsync();
             }
         }
@@ -2210,82 +2070,6 @@ namespace data.Repositories
   </ItemGroup>
 
 </Project>
-</file>
-
-<file path="WebApi/Controllers/AnswerKeyController.cs">
-using core.DTOs;
-using core.Interfaces;
-using Microsoft.AspNetCore.Authorization;
-using Microsoft.AspNetCore.Http;
-using Microsoft.AspNetCore.Mvc;
-using System.Security.Claims;
-
-namespace WebApi.Controllers
-{
-    [ApiController]
-    [Route("api/Exam/{examId}/AnswerKey")]
-    [Authorize]
-    public class AnswerKeyController : ControllerBase
-    {
-        private readonly IAnswerKeyService _answerKeyService;
-        public AnswerKeyController(IAnswerKeyService answerKeyService)
-        {
-            _answerKeyService = answerKeyService;
-        }
-
-        private int GetCurrentUserId()
-        {
-            var userIdClaim = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
-            if(string.IsNullOrEmpty(userIdClaim))
-            {
-                throw new UnauthorizedAccessException("Kullanıcı kimliği Bulunamadi.");
-            }
-            return int.Parse(userIdClaim);
-        }
-
-        [HttpPut]
-        public async Task<IActionResult> Save(int examId, [FromBody] SaveAnswerKeyDto request)
-        {
-            try
-            {
-                var userId = GetCurrentUserId();
-                var result = await _answerKeyService.SaveManualAsync(examId, userId, request);
-                return Ok(result);
-            }
-            catch (Exception ex)
-            {
-                return BadRequest(new { message = ex.Message });
-            }
-        }
-
-        [HttpGet]
-        public async Task<IActionResult> Get(int examId)
-        {
-            var userId = GetCurrentUserId();
-            var result = await _answerKeyService.GetByExamIdAsync(examId, userId);
-            if (result.Count == 0)
-            {
-                return NotFound(new { message = "Cevap anahtari bulunamadi." });
-            }
-            return Ok(result);
-        }
-
-        [HttpDelete]
-        public async Task<IActionResult> Delete(int examId)
-        {
-            try
-            {
-                var userId = GetCurrentUserId();
-                await _answerKeyService.DeleteAsync(examId, userId);
-                return NoContent();
-            }
-            catch (Exception ex)
-            {
-                return BadRequest(new { message = ex.Message });
-            }
-        }
-    }
-}
 </file>
 
 <file path="WebApi/Controllers/AuthController.cs">
@@ -3016,13 +2800,162 @@ MigrationBackup/
 FodyWeavers.xsd
 </file>
 
-<file path="optic.slnx">
-<Solution>
-  <Project Path="business/business.csproj" />
-  <Project Path="core/core.csproj" />
-  <Project Path="data/data.csproj" />
-  <Project Path="WebApi/WebApi.csproj" />
-</Solution>
+<file path="business/Services/AnswerKeyService.cs">
+using core.DTOs;
+using core.Entities;
+using core.interfaces;
+using core.Interfaces;
+using System.Text.Json;
+
+namespace business.Services
+{
+    public class AnswerKeyService : IAnswerKeyService
+    {
+        private readonly IAnswerKeyRepository _answerKeyRepository;
+        private readonly IExamRepository _examRepository;
+        private readonly IExamTemplateRepository _examTemplateRepository;
+
+        public AnswerKeyService(
+            IAnswerKeyRepository answerKeyRepository,
+            IExamRepository examRepository,
+            IExamTemplateRepository examTemplateRepository)
+        {
+            _answerKeyRepository = answerKeyRepository;
+            _examRepository = examRepository;
+            _examTemplateRepository = examTemplateRepository;
+        }
+
+        public async Task<List<AnswerKeyDto>> SaveManualAsync(int examId, int ownerUserId, SaveAnswerKeyDto request)
+        {
+            var exam = await GetOwnedExamAsync(examId, ownerUserId);
+
+            var template = await _examTemplateRepository.GetByIdAsync(exam.ExamTemplateId);
+            if (template == null)
+            {
+                throw new Exception("Sınavın şablonu bulunamadı.");
+            }
+
+            // Her ders tam olarak bir kez gelmeli
+            var incomingIds = request.Sections.Select(s => s.ExamSectionId).ToList();
+            if (incomingIds.Count != incomingIds.Distinct().Count())
+            {
+                throw new Exception("Aynı ders birden fazla kez gönderilmiş.");
+            }
+
+            var templateIds = template.Sections.Select(s => s.Id).ToHashSet();
+            if (!templateIds.SetEquals(incomingIds))
+            {
+                throw new Exception("Cevap anahtarında şablondaki tüm dersler eksiksiz olmalıdır.");
+            }
+
+            var newKeys = new List<AnswerKey>();
+
+            foreach (var sectionAnswers in request.Sections)
+            {
+                var section = template.Sections.First(s => s.Id == sectionAnswers.ExamSectionId);
+                var normalized = NormalizeAnswers(section, sectionAnswers.Answers);
+
+                newKeys.Add(new AnswerKey
+                {
+                    ExamId = examId,
+                    ExamSectionId = section.Id,
+                    IsScanned = false,
+                    AnswersJson = JsonSerializer.Serialize(normalized)
+                });
+            }
+
+            var saved = await _answerKeyRepository.ReplaceForExamAsync(examId, newKeys);
+            return saved.Select(k => MapToDto(k, template)).ToList();
+        }
+
+        public async Task<List<AnswerKeyDto>> GetByExamIdAsync(int examId, int ownerUserId)
+        {
+            var exam = await _examRepository.GetByIdAsync(examId);
+            if (exam == null || exam.OwnerUserId != ownerUserId)
+            {
+                return new List<AnswerKeyDto>();
+            }
+
+            var template = await _examTemplateRepository.GetByIdAsync(exam.ExamTemplateId);
+            if (template == null)
+            {
+                return new List<AnswerKeyDto>();
+            }
+
+            var keys = await _answerKeyRepository.GetByExamIdAsync(examId);
+            return keys.Select(k => MapToDto(k, template)).ToList();
+        }
+
+        public async Task DeleteAsync(int examId, int ownerUserId)
+        {
+            await GetOwnedExamAsync(examId, ownerUserId);
+
+            var keys = await _answerKeyRepository.GetByExamIdAsync(examId);
+            if (keys.Count == 0)
+            {
+                throw new Exception("Bu sınav için cevap anahtarı bulunamadı.");
+            }
+
+            await _answerKeyRepository.DeleteByExamIdAsync(examId);
+        }
+
+        // Bir dersin cevaplarını doğrular ve büyük harfe çevirir
+        private static Dictionary<int, string> NormalizeAnswers(ExamSection section, Dictionary<int, string> answers)
+        {
+            if (answers.Count != section.QuestionCount)
+            {
+                throw new Exception($"{section.Name} dersinin tüm soruları cevaplanmalıdır. Beklenen: {section.QuestionCount}, gelen: {answers.Count}.");
+            }
+
+            var validOptions = "ABCDE".Substring(0, section.OptionCount);
+            var normalized = new Dictionary<int, string>();
+
+            foreach (var item in answers)
+            {
+                if (item.Key < 1 || item.Key > section.QuestionCount)
+                {
+                    throw new Exception($"{section.Name} dersi için geçersiz soru numarası: {item.Key}. Numaralar 1 ile {section.QuestionCount} arasında olmalıdır.");
+                }
+
+                var option = (item.Value ?? string.Empty).Trim().ToUpperInvariant();
+                if (option.Length != 1 || !validOptions.Contains(option))
+                {
+                    throw new Exception($"{section.Name} dersi {item.Key}. soru için geçersiz şık: '{item.Value}'. Geçerli şıklar: {string.Join(", ", validOptions.ToCharArray())}.");
+                }
+
+                normalized[item.Key] = option;
+            }
+
+            return normalized;
+        }
+
+        private async Task<Exam> GetOwnedExamAsync(int examId, int ownerUserId)
+        {
+            var exam = await _examRepository.GetByIdAsync(examId);
+            if (exam == null || exam.OwnerUserId != ownerUserId)
+            {
+                throw new Exception("Sınav bulunamadı veya bu sınava erişim yetkiniz yok.");
+            }
+            return exam;
+        }
+
+        private static AnswerKeyDto MapToDto(AnswerKey key, ExamTemplate template)
+        {
+            var sectionName = template.Sections.FirstOrDefault(s => s.Id == key.ExamSectionId)?.Name ?? string.Empty;
+
+            return new AnswerKeyDto
+            {
+                Id = key.Id,
+                ExamId = key.ExamId,
+                ExamSectionId = key.ExamSectionId,
+                SectionName = sectionName,
+                IsScanned = key.IsScanned,
+                Answers = JsonSerializer.Deserialize<Dictionary<int, string>>(key.AnswersJson) ?? new(),
+                CreatedAt = key.CreatedAt
+            };
+        }
+    }
+}
 </file>
 
 <file path="business/Services/AuthService.cs">
@@ -3117,6 +3050,825 @@ namespace business.Services
         }
     }
 }
+</file>
+
+<file path="business/business.csproj">
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="BCrypt.Net-Next" Version="4.2.0" />
+    <PackageReference Include="Microsoft.IdentityModel.Tokens" Version="8.23.0" />
+    <PackageReference Include="System.IdentityModel.Tokens.Jwt" Version="8.23.0" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\core\core.csproj" />
+    <ProjectReference Include="..\data\data.csproj" />
+  </ItemGroup>
+
+</Project>
+</file>
+
+<file path="core/DTOs/AnswerKeyDto.cs">
+namespace core.DTOs
+{
+    public class AnswerKeyDto
+    {
+        public int Id { get; set; }
+        public int ExamId { get; set; }
+        public int ExamSectionId { get; set; }
+        public string SectionName { get; set; } = string.Empty;
+        public bool IsScanned { get; set; }
+        public Dictionary<int, string> Answers { get; set; } = new();
+        public DateTime CreatedAt { get; set; }
+    }
+}
+</file>
+
+<file path="core/DTOs/CreateExamTemplateDto.cs">
+namespace core.DTOs
+{
+    public class CreateExamTemplateDto
+    {
+        public string Name { get; set; } = string.Empty;
+        public int StudentNoDigits { get; set; } = 11;
+        public List<CreateExamSectionDto> Sections { get; set; } = new();
+    }
+}
+</file>
+
+<file path="core/DTOs/ExamTemplateDto.cs">
+namespace core.DTOs
+{
+    public class ExamTemplateDto
+    {
+        public int Id { get; set; }
+        public string Name { get; set; } = string.Empty;
+        public int StudentNoDigits { get; set; }
+        public int TotalQuestionCount { get; set; }
+        public List<ExamSectionDto> Sections { get; set; } = new();
+        public DateTime CreatedAt { get; set; }
+    }
+}
+</file>
+
+<file path="core/DTOs/SaveAnswerKeyDto.cs">
+namespace core.DTOs
+{
+    public class SaveAnswerKeyDto
+    {
+        public List<SectionAnswersDto> Sections { get; set; } = new();
+    }
+}
+</file>
+
+<file path="core/Entities/Exam.cs">
+namespace core.Entities
+{
+    public class Exam
+    {
+        public int Id { get; set; }
+        public int OwnerUserId { get; set; }
+        public int ExamTemplateId { get; set; }
+        public string Title { get; set; } = string.Empty;
+        public bool IsBulk { get; set; }
+        public double TotalScore { get; set; } = 100;                 // YENİ
+        public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
+    }
+}
+</file>
+
+<file path="core/Entities/ExamResult.cs">
+namespace core.Entities
+{
+    // Öğrenci başına, ders başına bir satır
+    public class ExamResult
+    {
+        public int Id { get; set; }
+        public int StudentSheetId { get; set; }
+        public int ExamSectionId { get; set; }                       // YENİ
+        public int CorrectCount { get; set; }
+        public int WrongCount { get; set; }
+        public int EmptyCount { get; set; }
+        public double Score { get; set; }
+        public DateTime CalculatedAt { get; set; } = DateTime.UtcNow;
+    }
+}
+</file>
+
+<file path="core/Entities/StudentAnswer.cs">
+namespace core.Entities
+{
+    public class StudentAnswer
+    {
+        public int Id { get; set; }
+        public int StudentSheetId { get; set; }
+        public int ExamSectionId { get; set; }                       // YENİ
+        public int QuestionNumber { get; set; }                      // dersin içinde 1'den başlar
+        public string SelectedOption { get; set; } = string.Empty;
+        public double ConfidenceScore { get; set; }
+    }
+}
+</file>
+
+<file path="core/Entities/StudentSheet.cs">
+namespace core.Entities
+{
+    public class StudentSheet
+    {
+        public int Id { get; set; }
+        public int ExamId { get; set; }
+        public int UploadBatchId { get; set; }                       // YENİ: hangi dosyadan geldi
+        public int PageNumber { get; set; } = 1;                     // YENİ: PDF'teki sayfa sırası
+
+        public string StudentNumber { get; set; } = string.Empty;
+        public string FirstName { get; set; } = string.Empty;        // YENİ (StudentName yerine)
+        public string LastName { get; set; } = string.Empty;         // YENİ
+        public string TcNo { get; set; } = string.Empty;             // YENİ
+        public string? Booklet { get; set; }                         // YENİ: okunamazsa null
+
+        public string ImageKey { get; set; } = string.Empty;         // ImagePath yerine: SeaweedFS anahtarı
+        public string ProcessingStatus { get; set; } = "Pending";
+        public bool NeedsReview { get; set; }                        // YENİ: şüpheli kâğıt
+        public string? ReviewReason { get; set; }                    // YENİ: neden şüpheli
+        public DateTime UploadedAt { get; set; } = DateTime.UtcNow;
+    }
+}
+</file>
+
+<file path="core/Interfaces/IAnswerKeyRepository.cs">
+using core.Entities;
+
+namespace core.Interfaces
+{
+    public interface IAnswerKeyRepository
+    {
+        Task<List<AnswerKey>> GetByExamIdAsync(int examId);
+        Task<List<AnswerKey>> ReplaceForExamAsync(int examId, List<AnswerKey> newKeys);
+        Task DeleteByExamIdAsync(int examId);
+    }
+}
+</file>
+
+<file path="data/Context/AppDbContext.cs">
+using core.Entities;
+using Microsoft.EntityFrameworkCore;
+
+namespace data.Context
+{
+    public class AppDbContext : DbContext
+    {
+        public AppDbContext(DbContextOptions<AppDbContext> options) : base(options)
+        {
+        }
+
+        public DbSet<User> Users { get; set; }
+        public DbSet<ExamTemplate> ExamTemplates { get; set; }
+        public DbSet<ExamSection> ExamSections { get; set; }
+        public DbSet<Exam> Exams { get; set; }
+        public DbSet<AnswerKey> AnswerKeys { get; set; }
+        public DbSet<StudentSheet> StudentSheets { get; set; }
+        public DbSet<StudentAnswer> StudentAnswers { get; set; }
+        public DbSet<ExamResult> ExamResults { get; set; }
+        public DbSet<UploadBatch> UploadBatches { get; set; }
+
+        protected override void OnModelCreating(ModelBuilder modelBuilder)
+        {
+            base.OnModelCreating(modelBuilder);
+
+            modelBuilder.Entity<ExamSection>()
+                .HasOne<ExamTemplate>()
+                .WithMany(t => t.Sections)
+                .HasForeignKey(s => s.ExamTemplateId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            modelBuilder.Entity<AnswerKey>()
+                .HasIndex(k => new { k.ExamId, k.ExamSectionId, k.Booklet })
+                .IsUnique();
+        }
+    }
+}
+</file>
+
+<file path="data/Migrations/AppDbContextModelSnapshot.cs">
+// <auto-generated />
+using System;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
+using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
+using data.Context;
+
+#nullable disable
+
+namespace data.Migrations
+{
+    [DbContext(typeof(AppDbContext))]
+    partial class AppDbContextModelSnapshot : ModelSnapshot
+    {
+        protected override void BuildModel(ModelBuilder modelBuilder)
+        {
+#pragma warning disable 612, 618
+            modelBuilder
+                .HasAnnotation("ProductVersion", "10.0.12")
+                .HasAnnotation("Relational:MaxIdentifierLength", 63);
+
+            NpgsqlModelBuilderExtensions.UseIdentityByDefaultColumns(modelBuilder);
+
+            modelBuilder.Entity("core.Entities.AnswerKey", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
+
+                    b.Property<string>("AnswersJson")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("Booklet")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<int>("ExamId")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("ExamSectionId")
+                        .HasColumnType("integer");
+
+                    b.Property<bool>("IsScanned")
+                        .HasColumnType("boolean");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ExamId", "ExamSectionId", "Booklet")
+                        .IsUnique();
+
+                    b.ToTable("AnswerKeys");
+                });
+
+            modelBuilder.Entity("core.Entities.Exam", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<int>("ExamTemplateId")
+                        .HasColumnType("integer");
+
+                    b.Property<bool>("IsBulk")
+                        .HasColumnType("boolean");
+
+                    b.Property<int>("OwnerUserId")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("Title")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<double>("TotalScore")
+                        .HasColumnType("double precision");
+
+                    b.HasKey("Id");
+
+                    b.ToTable("Exams");
+                });
+
+            modelBuilder.Entity("core.Entities.ExamResult", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
+
+                    b.Property<DateTime>("CalculatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<int>("CorrectCount")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("EmptyCount")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("ExamSectionId")
+                        .HasColumnType("integer");
+
+                    b.Property<double>("Score")
+                        .HasColumnType("double precision");
+
+                    b.Property<int>("StudentSheetId")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("WrongCount")
+                        .HasColumnType("integer");
+
+                    b.HasKey("Id");
+
+                    b.ToTable("ExamResults");
+                });
+
+            modelBuilder.Entity("core.Entities.ExamSection", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
+
+                    b.Property<int>("ExamTemplateId")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<int>("OptionCount")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("Order")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("QuestionCount")
+                        .HasColumnType("integer");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ExamTemplateId");
+
+                    b.ToTable("ExamSections");
+                });
+
+            modelBuilder.Entity("core.Entities.ExamTemplate", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("InstitutionName")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("LayoutJson")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<int>("OwnerUserId")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("SourceType")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<int>("StudentNoDigits")
+                        .HasColumnType("integer");
+
+                    b.HasKey("Id");
+
+                    b.ToTable("ExamTemplates");
+                });
+
+            modelBuilder.Entity("core.Entities.StudentAnswer", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
+
+                    b.Property<double>("ConfidenceScore")
+                        .HasColumnType("double precision");
+
+                    b.Property<int>("ExamSectionId")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("QuestionNumber")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("SelectedOption")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<int>("StudentSheetId")
+                        .HasColumnType("integer");
+
+                    b.HasKey("Id");
+
+                    b.ToTable("StudentAnswers");
+                });
+
+            modelBuilder.Entity("core.Entities.StudentSheet", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
+
+                    b.Property<string>("Booklet")
+                        .HasColumnType("text");
+
+                    b.Property<int>("ExamId")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("FirstName")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("ImageKey")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("LastName")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<bool>("NeedsReview")
+                        .HasColumnType("boolean");
+
+                    b.Property<int>("PageNumber")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("ProcessingStatus")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("ReviewReason")
+                        .HasColumnType("text");
+
+                    b.Property<string>("StudentNumber")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("TcNo")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<int>("UploadBatchId")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTime>("UploadedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.HasKey("Id");
+
+                    b.ToTable("StudentSheets");
+                });
+
+            modelBuilder.Entity("core.Entities.UploadBatch", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
+
+                    b.Property<int>("ExamId")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("FileKey")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("Format")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("OriginalFileName")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<int>("PageCount")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("ProcessingStatus")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<DateTime>("UploadedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.HasKey("Id");
+
+                    b.ToTable("UploadBatches");
+                });
+
+            modelBuilder.Entity("core.Entities.User", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("Email")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("FullName")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("PasswordHash")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.HasKey("Id");
+
+                    b.ToTable("Users");
+                });
+
+            modelBuilder.Entity("core.Entities.ExamSection", b =>
+                {
+                    b.HasOne("core.Entities.ExamTemplate", null)
+                        .WithMany("Sections")
+                        .HasForeignKey("ExamTemplateId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("core.Entities.ExamTemplate", b =>
+                {
+                    b.Navigation("Sections");
+                });
+#pragma warning restore 612, 618
+        }
+    }
+}
+</file>
+
+<file path="data/Repositories/AnswerKeyRepository.cs">
+using core.Entities;
+using core.Interfaces;
+using data.Context;
+using Microsoft.EntityFrameworkCore;
+
+namespace data.Repositories
+{
+    public class AnswerKeyRepository : IAnswerKeyRepository
+    {
+        private readonly AppDbContext _context;
+
+        public AnswerKeyRepository(AppDbContext context)
+        {
+            _context = context;
+        }
+
+        public async Task<List<AnswerKey>> GetByExamIdAsync(int examId)
+        {
+            return await _context.AnswerKeys
+                .Where(a => a.ExamId == examId)
+                .OrderBy(a => a.ExamSectionId)
+                .ToListAsync();
+        }
+
+        public async Task<List<AnswerKey>> ReplaceForExamAsync(int examId, List<AnswerKey> newKeys)
+        {
+            var old = await _context.AnswerKeys
+                .Where(a => a.ExamId == examId)
+                .ToListAsync();
+
+            _context.AnswerKeys.RemoveRange(old);
+            _context.AnswerKeys.AddRange(newKeys);
+
+            await _context.SaveChangesAsync();
+            return newKeys;
+        }
+
+        public async Task DeleteByExamIdAsync(int examId)
+        {
+            var keys = await _context.AnswerKeys
+                .Where(a => a.ExamId == examId)
+                .ToListAsync();
+
+            if (keys.Count > 0)
+            {
+                _context.AnswerKeys.RemoveRange(keys);
+                await _context.SaveChangesAsync();
+            }
+        }
+    }
+}
+</file>
+
+<file path="data/Repositories/ExamTemplateRepository.cs">
+using core.Entities;
+using core.Interfaces;
+using data.Context;
+using Microsoft.EntityFrameworkCore;
+
+namespace data.Repositories
+{
+    public class ExamTemplateRepository : IExamTemplateRepository
+    {
+        private readonly AppDbContext _context;
+
+        public ExamTemplateRepository(AppDbContext context)
+        {
+            _context = context;
+        }
+
+        public async Task<ExamTemplate?> GetByIdAsync(int id)
+        {
+            return await _context.ExamTemplates
+                .Include(t => t.Sections)
+                .FirstOrDefaultAsync(t => t.Id == id);
+        }
+
+        public async Task<List<ExamTemplate>> GetByOwnerUserIdAsync(int ownerUserId)
+        {
+            return await _context.ExamTemplates
+                .Include(t => t.Sections)
+                .Where(t => t.OwnerUserId == ownerUserId)
+                .ToListAsync();
+        }
+
+        public async Task<ExamTemplate> AddAsync(ExamTemplate examTemplate)
+        {
+            _context.ExamTemplates.Add(examTemplate);
+            await _context.SaveChangesAsync();
+            return examTemplate;
+        }
+
+        public async Task UpdateAsync(ExamTemplate examTemplate)
+        {
+            // GetByIdAsync ile çekilen şablon zaten EF tarafından takip ediliyor,
+            // yapılan değişiklikleri (yeni/silinen dersler dahil) SaveChanges kaydeder.
+            await _context.SaveChangesAsync();
+        }
+
+        public async Task DeleteAsync(int id)
+        {
+            var examTemplate = await _context.ExamTemplates.FindAsync(id);
+            if (examTemplate != null)
+            {
+                _context.ExamTemplates.Remove(examTemplate);
+                await _context.SaveChangesAsync();
+            }
+        }
+    }
+}
+</file>
+
+<file path="WebApi/Controllers/AnswerKeyController.cs">
+using core.DTOs;
+using core.Interfaces;
+using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Http;
+using Microsoft.AspNetCore.Mvc;
+using System.Security.Claims;
+
+namespace WebApi.Controllers
+{
+    [ApiController]
+    [Route("api/Exam/{examId}/AnswerKey")]
+    [Authorize]
+    public class AnswerKeyController : ControllerBase
+    {
+        private readonly IAnswerKeyService _answerKeyService;
+        public AnswerKeyController(IAnswerKeyService answerKeyService)
+        {
+            _answerKeyService = answerKeyService;
+        }
+
+        private int GetCurrentUserId()
+        {
+            var userIdClaim = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+            if(string.IsNullOrEmpty(userIdClaim))
+            {
+                throw new UnauthorizedAccessException("Kullanıcı kimliği Bulunamadi.");
+            }
+            return int.Parse(userIdClaim);
+        }
+
+        [HttpPut]
+        public async Task<IActionResult> Save(int examId, [FromBody] SaveAnswerKeyDto request)
+        {
+            try
+            {
+                var userId = GetCurrentUserId();
+                var result = await _answerKeyService.SaveManualAsync(examId, userId, request);
+                return Ok(result);
+            }
+            catch (Exception ex)
+            {
+                return BadRequest(new { message = ex.Message });
+            }
+        }
+
+        [HttpGet]
+        public async Task<IActionResult> Get(int examId)
+        {
+            var userId = GetCurrentUserId();
+            var result = await _answerKeyService.GetByExamIdAsync(examId, userId);
+            if (result.Count == 0)
+            {
+                return NotFound(new { message = "Cevap anahtari bulunamadi." });
+            }
+            return Ok(result);
+        }
+
+        [HttpDelete]
+        public async Task<IActionResult> Delete(int examId)
+        {
+            try
+            {
+                var userId = GetCurrentUserId();
+                await _answerKeyService.DeleteAsync(examId, userId);
+                return NoContent();
+            }
+            catch (Exception ex)
+            {
+                return BadRequest(new { message = ex.Message });
+            }
+        }
+    }
+}
+</file>
+
+<file path="WebApi/appsettings.json">
+{
+  "ConnectionStrings": {
+    "DefaultConnection": "Host=localhost;Port=5432;Database=OpticalReaderDb;Username=postgres;Password=postgres"
+  },
+  "Jwt": {
+    "Key": "GIKdj73InUJ_zZjVQEUw851bJXIjscsQOdLghKMqxVRS4dvYvqw_jv2Oj49GEwGn",
+    "Issuer": "OpticalReaderApi",
+    "Audience": "OpticalReaderClient"
+  },
+  "Logging": {
+    "LogLevel": {
+      "Default": "Information",
+      "Microsoft.AspNetCore": "Warning"
+    }
+  },
+  "AllowedHosts": "*"
+}
+</file>
+
+<file path="WebApi/WebApi.csproj">
+<Project Sdk="Microsoft.NET.Sdk.Web">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.AspNetCore.Authentication.JwtBearer" Version="10.0.12" />
+    <PackageReference Include="Microsoft.AspNetCore.OpenApi" Version="10.0.12" />
+    <PackageReference Include="Microsoft.EntityFrameworkCore.Design" Version="10.0.12">
+      <PrivateAssets>all</PrivateAssets>
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+    </PackageReference>
+    <PackageReference Include="Npgsql.EntityFrameworkCore.PostgreSQL" Version="10.0.3" />
+    <PackageReference Include="Swashbuckle.AspNetCore" Version="10.2.3" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\business\business.csproj" />
+    <ProjectReference Include="..\core\core.csproj" />
+    <ProjectReference Include="..\data\data.csproj" />
+  </ItemGroup>
+
+</Project>
+</file>
+
+<file path="optic.slnx">
+<Solution>
+  <Project Path="business/business.csproj" />
+  <Project Path="core/core.csproj" />
+  <Project Path="data/data.csproj" />
+  <Project Path="WebApi/WebApi.csproj" />
+</Solution>
 </file>
 
 <file path="business/Services/ExamTemplateService.cs">
@@ -3290,41 +4042,15 @@ namespace business.Services
 }
 </file>
 
-<file path="business/business.csproj">
-<Project Sdk="Microsoft.NET.Sdk">
-
-  <PropertyGroup>
-    <TargetFramework>net10.0</TargetFramework>
-    <ImplicitUsings>enable</ImplicitUsings>
-    <Nullable>enable</Nullable>
-  </PropertyGroup>
-
-  <ItemGroup>
-    <PackageReference Include="BCrypt.Net-Next" Version="4.2.0" />
-    <PackageReference Include="Microsoft.IdentityModel.Tokens" Version="8.23.0" />
-    <PackageReference Include="System.IdentityModel.Tokens.Jwt" Version="8.23.0" />
-  </ItemGroup>
-
-  <ItemGroup>
-    <ProjectReference Include="..\core\core.csproj" />
-    <ProjectReference Include="..\data\data.csproj" />
-  </ItemGroup>
-
-</Project>
-</file>
-
 <file path="core/Entities/AnswerKey.cs">
-using System;
-using System.Collections.Generic;
-using System.Text;
-
 namespace core.Entities
 {
     public class AnswerKey
     {
         public int Id { get; set; }
         public int ExamId { get; set; }
-        public int ExamSectionId { get; set; }               // YENİ: hangi dersin anahtarı
+        public int ExamSectionId { get; set; }
+        public string Booklet { get; set; } = "A";                   // YENİ: A, B, C veya D
         public bool IsScanned { get; set; }
         public string AnswersJson { get; set; } = string.Empty;
         public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
@@ -3333,10 +4059,6 @@ namespace core.Entities
 </file>
 
 <file path="core/Entities/ExamTemplate.cs">
-using System;
-using System.Collections.Generic;
-using System.Text;
-
 namespace core.Entities
 {
     public class ExamTemplate
@@ -3344,11 +4066,12 @@ namespace core.Entities
         public int Id { get; set; }
         public int OwnerUserId { get; set; }
         public string Name { get; set; } = string.Empty;
-        public int StudentNoDigits { get; set; } = 11;      
-        public string SourceType { get; set; } = "Standard"; 
+        public string InstitutionName { get; set; } = string.Empty;   // YENİ: formun başlığına basılır
+        public int StudentNoDigits { get; set; } = 11;
+        public string SourceType { get; set; } = "Standard";
         public string LayoutJson { get; set; } = string.Empty;
         public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
-        public List<ExamSection> Sections { get; set; } = new(); 
+        public List<ExamSection> Sections { get; set; } = new();
     }
 }
 </file>
@@ -3365,55 +4088,6 @@ namespace core.Interfaces
         Task DeleteAsync(int examId, int ownerUserId);
     }
 }
-</file>
-
-<file path="WebApi/appsettings.json">
-{
-  "ConnectionStrings": {
-    "DefaultConnection": "Host=localhost;Port=5432;Database=OpticalReaderDb;Username=postgres;Password=postgres"
-  },
-  "Jwt": {
-    "Key": "GIKdj73InUJ_zZjVQEUw851bJXIjscsQOdLghKMqxVRS4dvYvqw_jv2Oj49GEwGn",
-    "Issuer": "OpticalReaderApi",
-    "Audience": "OpticalReaderClient"
-  },
-  "Logging": {
-    "LogLevel": {
-      "Default": "Information",
-      "Microsoft.AspNetCore": "Warning"
-    }
-  },
-  "AllowedHosts": "*"
-}
-</file>
-
-<file path="WebApi/WebApi.csproj">
-<Project Sdk="Microsoft.NET.Sdk.Web">
-
-  <PropertyGroup>
-    <TargetFramework>net10.0</TargetFramework>
-    <Nullable>enable</Nullable>
-    <ImplicitUsings>enable</ImplicitUsings>
-  </PropertyGroup>
-
-  <ItemGroup>
-    <PackageReference Include="Microsoft.AspNetCore.Authentication.JwtBearer" Version="10.0.12" />
-    <PackageReference Include="Microsoft.AspNetCore.OpenApi" Version="10.0.12" />
-    <PackageReference Include="Microsoft.EntityFrameworkCore.Design" Version="10.0.12">
-      <PrivateAssets>all</PrivateAssets>
-      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
-    </PackageReference>
-    <PackageReference Include="Npgsql.EntityFrameworkCore.PostgreSQL" Version="10.0.3" />
-    <PackageReference Include="Swashbuckle.AspNetCore" Version="10.2.3" />
-  </ItemGroup>
-
-  <ItemGroup>
-    <ProjectReference Include="..\business\business.csproj" />
-    <ProjectReference Include="..\core\core.csproj" />
-    <ProjectReference Include="..\data\data.csproj" />
-  </ItemGroup>
-
-</Project>
 </file>
 
 <file path="WebApi/Program.cs">

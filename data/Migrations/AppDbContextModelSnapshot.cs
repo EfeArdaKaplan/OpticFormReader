@@ -78,6 +78,12 @@ namespace data.Migrations
                     b.Property<int>("OwnerUserId")
                         .HasColumnType("integer");
 
+                    b.Property<double>("PercentRatio")
+                        .HasColumnType("double precision");
+
+                    b.Property<double>("PointPerQuestion")
+                        .HasColumnType("double precision");
+
                     b.Property<string>("Title")
                         .IsRequired()
                         .HasColumnType("text");

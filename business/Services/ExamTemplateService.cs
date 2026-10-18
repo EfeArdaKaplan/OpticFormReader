@@ -23,6 +23,9 @@ namespace business.Services
             {
                 OwnerUserId = ownerUserId,
                 Name = request.Name.Trim(),
+                InstitutionName = string.IsNullOrWhiteSpace(request.InstitutionName)
+                    ? string.Empty
+                    : request.InstitutionName.Trim(),
                 StudentNoDigits = request.StudentNoDigits,
                 Sections = BuildSections(request.Sections)
             };
@@ -61,6 +64,9 @@ namespace business.Services
             Validate(request);
 
             template.Name = request.Name.Trim();
+            template.InstitutionName = string.IsNullOrWhiteSpace(request.InstitutionName)
+                ? string.Empty
+                : request.InstitutionName.Trim();
             template.StudentNoDigits = request.StudentNoDigits;
 
             // Eski dersleri at, yenilerini koy
@@ -158,6 +164,7 @@ namespace business.Services
             {
                 Id = template.Id,
                 Name = template.Name,
+                InstitutionName = template.InstitutionName,
                 StudentNoDigits = template.StudentNoDigits,
                 TotalQuestionCount = sections.Sum(s => s.QuestionCount),
                 Sections = sections,
