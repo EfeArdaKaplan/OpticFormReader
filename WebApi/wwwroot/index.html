@@ -85,7 +85,7 @@
   <!-- =========================================================================
        2. AÇILIŞ (LANDING / TANITIM) EKRANI
        ========================================================================= -->
-  <section id="view-landing" class="view-section active">
+  <section id="view-landing" class="view-section hidden">
     <div class="landing-hero">
       <div class="container hero-container">
         <div class="hero-badge">
@@ -160,7 +160,7 @@
   <!-- =========================================================================
        3. GİRİŞ & KAYIT OL EKRANI (AUTH SECTION)
        ========================================================================= -->
-  <section id="view-auth" class="view-section hidden">
+  <section id="view-auth" class="view-section active">
     <div class="auth-wrapper">
       <div class="auth-card">
         <div class="auth-header">
@@ -424,9 +424,14 @@
                   <h3 class="sub-heading">📄 Canlı A4 Optik Sınav Kağıdı Önizlemesi</h3>
                   <span class="text-xs text-muted">ÖSYM standartlarında Ad-Soyad kodlaması ve 5 sütuna kadar yan yana sığabilen tasarım.</span>
                 </div>
-                <button type="button" class="btn btn-primary btn-sm" onclick="printLiveSheet()">
-                  🖨️ A4 Optik Formu Yazdır / PDF İndir
-                </button>
+                <div class="flex-row gap-2 no-print">
+                  <button type="button" class="btn btn-primary btn-sm" onclick="downloadOpticalPdf()">
+                    📥 A4 Optik Formu İndir (Vektör PDF)
+                  </button>
+                  <button type="button" class="btn btn-secondary btn-sm" onclick="window.print()">
+                    🖨️ Yazdır
+                  </button>
+                </div>
               </div>
 
               <!-- Anında Oluşan Canlı A4 Kağıt Şablonu -->

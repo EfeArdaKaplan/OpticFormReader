@@ -18,7 +18,7 @@ const STORAGE_KEY = 'optimatrix_clean_v5';
 
 // Varsayılan Uygulama Durumu (Initial State)
 const defaultState = {
-  view: 'landing', // 'landing' | 'auth' | 'app'
+  view: 'auth', // 'landing' | 'auth' | 'app' (Başlangıçta doğrudan Giriş / Login ekranı)
   isLoggedIn: false,
   currentUser: {
     name: 'Prof. Dr. Ahmet Yılmaz',
@@ -55,28 +55,10 @@ const defaultState = {
   scanMode: 'single', // 'single' | 'bulk'
   singleFile: null, // { name, size, type, dataUrl, isValidOptical, studentName, studentId, booklet }
   bulkFiles: [],
-  scanHistory: [
-    {
-      id: 'sc-101',
-      fileName: 'Vize_Sinavi_Yazici_Taramasi.pdf',
-      format: 'PDF',
-      date: '15.10.2026 14:30',
-      paperCount: 42,
-      status: 'Başarılı',
-      scoreAvg: '78.50'
-    },
-    {
-      id: 'sc-102',
-      fileName: 'Kamera_Cekim_A_Kitapcik.jpg',
-      format: 'JPG',
-      date: '15.10.2026 15:10',
-      paperCount: 1,
-      status: 'İncelendi',
-      scoreAvg: '84.15'
-    }
-  ],
+  scanHistory: [],
   evaluation: null,
-  token: localStorage.getItem('optimatrix_jwt_token') || '',
+  selectedStudentId: null,
+  token: '',
   activeExamId: null,
   activeTemplateId: null
 };
@@ -84,6 +66,54 @@ const defaultState = {
 let state = JSON.parse(JSON.stringify(defaultState));
 let webcamStream = null;
 let memoryUploadedFiles = [];
+let lastUserActivityTime = Date.now();
+const INACTIVITY_TIMEOUT_MS = 20 * 60 * 1000; // 20 Dakika Hareketsizlik Kontrolü
+
+function parseJwt(token) {
+  if (!token || typeof token !== 'string') return null;
+  try {
+    const base64Url = token.split('.')[1];
+    if (!base64Url) return null;
+    const base64 = base64Url.replace(/-/g, '+').replace(/_/g, '/');
+    const jsonPayload = decodeURIComponent(atob(base64).split('').map(function(c) {
+      return '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2);
+    }).join(''));
+    return JSON.parse(jsonPayload);
+  } catch (e) {
+    return null;
+  }
+}
+
+function getStudentDisplayName(st) {
+  if (!st) return 'Öğrenci';
+
+  let rawName = st.fullName || st.studentName || st.name;
+  if (rawName && typeof rawName === 'string') {
+    rawName = rawName.trim();
+    const lower = rawName.toLowerCase();
+    const isGeneric =
+      lower.startsWith('öğrenci #') ||
+      lower.startsWith('öğrenci 1') ||
+      lower.startsWith('öğrenci -') ||
+      lower === 'öğrenci' ||
+      lower === 'ogrenci' ||
+      lower === 'isimsiz öğrenci' ||
+      lower === '1' ||
+      /^\d+$/.test(rawName);
+
+    if (!isGeneric && rawName.length > 1) {
+      return rawName;
+    }
+  }
+
+  const id = st.studentNumber || st.studentId;
+  if (id && String(id).trim() && String(id) !== 'undefined' && String(id) !== 'null' && String(id) !== '1') {
+    return `Öğrenci - ${String(id).trim()}`;
+  }
+
+  const rankNo = st.rank || (st.sheetId ? st.sheetId : 1);
+  return `Öğrenci - 2026${String(rankNo).padStart(4, '0')}`;
+}
 
 function dataURLtoFile(dataurl, filename) {
   if (!dataurl || typeof dataurl !== 'string') {
@@ -108,11 +138,59 @@ function dataURLtoFile(dataurl, filename) {
 }
 
 // ==========================================================================
-// 0. GERÇEK BACKEND API & SIGNALR BAĞLANTI KATMANI
+// 0. GERÇEK BACKEND API & SİLENT-REFRESH INTERCEPTOR KATMANI
 // ==========================================================================
 const API_BASE = ''; // Göreceli yol: frontend wwwroot içinden sunulduğunda aynı origin kullanılır
 
+let isRefreshing = false;
+let refreshSubscribers = [];
+
+function subscribeTokenRefresh(cb) {
+  refreshSubscribers.push(cb);
+}
+
+function onRefreshed(token) {
+  refreshSubscribers.forEach(cb => cb(token));
+  refreshSubscribers = [];
+}
+
+async function checkAndSilentRefreshToken() {
+  const token = state.token || localStorage.getItem('optimatrix_jwt_token');
+  if (!token) return;
+  try {
+    const payload = parseJwt(token);
+    if (payload && payload.exp) {
+      const nowSec = Math.floor(Date.now() / 1000);
+      const secondsLeft = payload.exp - nowSec;
+      // Token süresinin bitmesine 5 dakikadan az kaldıysa veya kullanıcı işlem yaptıkça sessizce yenile (Sliding Expiration)
+      if (secondsLeft > 0 && secondsLeft < 300) {
+        const refreshResponse = await fetch(`${API_BASE}/api/Auth/refresh`, {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${token}`,
+            'Content-Type': 'application/json'
+          }
+        });
+        if (refreshResponse.ok) {
+          const data = await refreshResponse.json();
+          if (data && data.token) {
+            state.token = data.token;
+            localStorage.setItem('optimatrix_jwt_token', data.token);
+          }
+        }
+      }
+    }
+  } catch (e) {
+    console.warn('Otomatik token yenileme uyarısı:', e);
+  }
+}
+
 async function apiRequest(endpoint, method = 'GET', body = null, isFormData = false) {
+  // 1) Sliding Expiration: İstek öncesi token geçerlilik kontrolü
+  if (!endpoint.includes('/api/Auth/')) {
+    await checkAndSilentRefreshToken();
+  }
+
   const headers = {};
   const token = state.token || localStorage.getItem('optimatrix_jwt_token');
   if (token) {
@@ -132,6 +210,43 @@ async function apiRequest(endpoint, method = 'GET', body = null, isFormData = fa
   }
 
   const response = await fetch(`${API_BASE}${endpoint}`, config);
+
+  // 2) 401 Unauthorized Hatası Yakalama & Tekrar Deneme
+  if (response.status === 401 && !endpoint.includes('/api/Auth/login') && !endpoint.includes('/api/Auth/register')) {
+    if (token) {
+      try {
+        const refreshResponse = await fetch(`${API_BASE}/api/Auth/refresh`, {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${token}`,
+            'Content-Type': 'application/json'
+          }
+        });
+        if (refreshResponse.ok) {
+          const data = await refreshResponse.json();
+          if (data && data.token) {
+            state.token = data.token;
+            localStorage.setItem('optimatrix_jwt_token', data.token);
+            headers['Authorization'] = `Bearer ${data.token}`;
+            const retryRes = await fetch(`${API_BASE}${endpoint}`, config);
+            if (retryRes.ok) {
+              if (retryRes.status === 204) return null;
+              const ct = retryRes.headers.get('content-type');
+              if (ct && ct.includes('application/json')) return await retryRes.json();
+              return await retryRes.blob();
+            }
+          }
+        }
+      } catch (err) {
+        console.warn('Refresh retry failed:', err);
+      }
+    }
+
+    // Refresh başarısız olduysa oturumu temizle ve Login'e yönlendir
+    handleSessionExpired();
+    throw new Error('Oturum süreniz doldu. Lütfen tekrar giriş yapınız.');
+  }
+
   if (!response.ok) {
     let errorMsg = `İstek başarısız (${response.status})`;
     try {
@@ -147,6 +262,15 @@ async function apiRequest(endpoint, method = 'GET', body = null, isFormData = fa
     return await response.json();
   }
   return await response.blob();
+}
+
+function handleSessionExpired() {
+  state.isLoggedIn = false;
+  state.token = '';
+  localStorage.removeItem('optimatrix_jwt_token');
+  localStorage.removeItem(STORAGE_KEY);
+  showToast('Oturum süreniz doldu. Lütfen tekrar giriş yapınız.', 'warning');
+  navigateTo('auth');
 }
 
 let signalRConnection = null;
@@ -183,8 +307,33 @@ document.addEventListener('DOMContentLoaded', () => {
   loadPersistedState();
   initTheme();
   setupGlobalEvents();
+  setupInactivityTracker();
   syncUI();
 });
+
+function setupInactivityTracker() {
+  const activityEvents = ['mousemove', 'keydown', 'mousedown', 'touchstart', 'scroll'];
+  activityEvents.forEach(evt => {
+    window.addEventListener(evt, () => {
+      lastUserActivityTime = Date.now();
+    }, { passive: true });
+  });
+
+  setInterval(() => {
+    if (state.isLoggedIn && (Date.now() - lastUserActivityTime > INACTIVITY_TIMEOUT_MS)) {
+      handleInactivityLogout();
+    }
+  }, 15000); // 15 saniyede bir kontrol et
+}
+
+function handleInactivityLogout() {
+  state.isLoggedIn = false;
+  state.token = '';
+  localStorage.removeItem('optimatrix_jwt_token');
+  localStorage.removeItem(STORAGE_KEY);
+  showToast('20 dakika boyunca herhangi bir işlem yapılmadığı için oturumunuz güvenlik nedeniyle sonlandırıldı.', 'warning');
+  navigateTo('auth');
+}
 
 function getActiveBookletKeyMap(booklet = state.activeBooklet || 'A') {
   if (!state.bookletAnswerKeys) {
@@ -199,14 +348,52 @@ function getActiveBookletKeyMap(booklet = state.activeBooklet || 'A') {
   return state.bookletAnswerKeys[booklet];
 }
 
+function hasBookletAnswerKey(booklet = 'A') {
+  if (!state.bookletAnswerKeys) return false;
+  const bKey = String(booklet || 'A').toUpperCase();
+  const keys = state.bookletAnswerKeys[bKey];
+  if (!keys || typeof keys !== 'object') return false;
+  return Object.values(keys).some(val => val && typeof val === 'string' && val.trim() !== '' && val.trim() !== '-');
+}
+
+function generateEmptyQuestionBreakdown() {
+  const cfg = state.config;
+  const questionsBreakdown = [];
+  cfg.courses.forEach(course => {
+    for (let q = 1; q <= course.questionCount; q++) {
+      questionsBreakdown.push({
+        courseId: course.id,
+        courseName: course.name,
+        num: q,
+        correctAnswer: '-',
+        studentAnswer: '-',
+        status: 'empty',
+        points: '0.00'
+      });
+    }
+  });
+  return questionsBreakdown;
+}
+
 function loadPersistedState() {
   try {
     const saved = localStorage.getItem(STORAGE_KEY);
+    const savedToken = localStorage.getItem('optimatrix_jwt_token');
+
+    // Token geçerliliğini ve süresini kontrol et
+    let isTokenValid = false;
+    let decoded = null;
+    if (savedToken) {
+      decoded = parseJwt(savedToken);
+      if (decoded && decoded.exp && (decoded.exp * 1000 > Date.now())) {
+        isTokenValid = true;
+      }
+    }
+
     if (saved) {
       const parsed = JSON.parse(saved);
-      state = Object.assign({}, defaultState, parsed);
       state.config = Object.assign({}, defaultState.config, parsed.config || {});
-      if (parsed.currentUser) state.currentUser = parsed.currentUser;
+      if (parsed.theme) state.theme = parsed.theme;
       if (parsed.activeBooklet) {
         state.activeBooklet = ['A', 'B', 'C', 'D'].includes(parsed.activeBooklet) ? parsed.activeBooklet : 'A';
       }
@@ -222,12 +409,40 @@ function loadPersistedState() {
         };
       }
       state.answerKeys = getActiveBookletKeyMap();
-      if (parsed.scanHistory) state.scanHistory = parsed.scanHistory;
+      if (parsed.scanHistory && Array.isArray(parsed.scanHistory)) state.scanHistory = parsed.scanHistory;
       if (parsed.evaluation) state.evaluation = parsed.evaluation;
+      if (parsed.activeExamId) state.activeExamId = parsed.activeExamId;
+      if (parsed.activeTemplateId) state.activeTemplateId = parsed.activeTemplateId;
+
+      // SADECE VE SADECE geçerli, süresi dolmamış bir JWT varsa ve kullanıcı giriş yapmışsa oturumu sürdür:
+      if (isTokenValid && parsed.isLoggedIn) {
+        state.token = savedToken;
+        state.isLoggedIn = true;
+        if (parsed.currentUser) state.currentUser = parsed.currentUser;
+        state.view = 'app';
+        state.appTab = parsed.appTab || 'home';
+      } else {
+        // Oturum açılmamışsa veya token sahte/süresi dolmuşsa DOĞRUDAN GİRİŞ (auth) EKRANINA GİT!
+        state.token = '';
+        state.isLoggedIn = false;
+        state.view = 'auth';
+        state.appTab = 'home';
+        localStorage.removeItem('optimatrix_jwt_token');
+      }
+    } else {
+      state = JSON.parse(JSON.stringify(defaultState));
+      state.view = 'auth';
+      state.isLoggedIn = false;
+      state.token = '';
+      localStorage.removeItem('optimatrix_jwt_token');
     }
   } catch (err) {
     console.warn('Durum geri yükleme hatası:', err);
     state = JSON.parse(JSON.stringify(defaultState));
+    state.view = 'auth';
+    state.isLoggedIn = false;
+    state.token = '';
+    localStorage.removeItem('optimatrix_jwt_token');
   }
 }
 
@@ -309,7 +524,7 @@ function onBrandClick() {
   if (state.isLoggedIn) {
     switchAppTab('home');
   } else {
-    navigateTo('landing');
+    navigateTo('auth');
   }
 }
 
@@ -416,7 +631,8 @@ function handleLogout() {
   state.isLoggedIn = false;
   state.token = '';
   localStorage.removeItem('optimatrix_jwt_token');
-  state.view = 'landing';
+  localStorage.removeItem(STORAGE_KEY);
+  state.view = 'auth';
   saveState();
   syncUI();
   showToast('Oturum kapatıldı.', 'info');
@@ -770,20 +986,21 @@ function renderColumnRows() {
   state.config.courses.forEach((course, index) => {
     const card = document.createElement('div');
     card.className = 'column-item-card';
+    card.id = `column-card-${course.id}`;
 
     card.innerHTML = `
       <div class="col-badge-num">${index + 1}</div>
       <div class="col-name">
-        <input type="text" class="form-input" value="${course.name}" 
+        <input type="text" class="form-input" id="course-name-input-${course.id}" value="${course.name}" 
                placeholder="Ders/Bölüm Adı" 
                oninput="updateColumnField(${course.id}, 'name', this.value)">
       </div>
       <div class="col-count">
         <label class="text-xs text-muted">Soru Sayısı:</label>
-        <input type="number" class="form-input" min="1" max="100" value="${course.questionCount}" 
+        <input type="number" class="form-input" id="course-qcount-input-${course.id}" min="1" max="100" value="${course.questionCount}" 
                oninput="updateColumnField(${course.id}, 'questionCount', this.value)">
       </div>
-      <div class="col-range-tag">
+      <div class="col-range-tag" id="course-range-tag-${course.id}">
         Soru 1 - ${course.questionCount}
       </div>
       <div>
@@ -853,6 +1070,8 @@ function updateColumnField(courseId, field, val) {
   if (field === 'questionCount') {
     const count = parseInt(val, 10);
     course.questionCount = isNaN(count) || count < 1 ? 1 : count;
+    const tagEl = document.getElementById(`course-range-tag-${course.id}`);
+    if (tagEl) tagEl.textContent = `Soru 1 - ${course.questionCount}`;
   } else {
     course[field] = val;
   }
@@ -864,8 +1083,13 @@ function updateColumnField(courseId, field, val) {
   }
 
   saveState();
-  renderColumnRows();
-  renderAnswerMatrix();
+
+  // KRİTİK DÜZELTME (Focus Kaybı / Re-Render Bug):
+  // Kullanıcı ders adı veya soru sayısı yazarken container.innerHTML'i sıfırlayan renderColumnRows() ÇAĞRILMAZ!
+  // Sadece canlı önizleme ve matris güncellenir. Input DOM düğümü stabil kalır ve focus asla kaybolmaz.
+  if (field === 'questionCount') {
+    renderAnswerMatrix();
+  }
   renderLiveSettingsSheet();
   syncHomeDOM();
 }
@@ -921,17 +1145,23 @@ async function syncExamAndTemplateToBackend() {
     exam = { id: state.activeExamId };
   }
 
-  // Cevap Anahtarlarını Kaydet (A, B, C, D)
+  // Cevap Anahtarlarını Kaydet (SADECE gerçekten cevap girilmiş kitapçıklar kaydedilir; girilmeyen B, C, D atlanır)
   if (template.sections && template.sections.length > 0) {
     for (const booklet of ['A', 'B', 'C', 'D']) {
+      if (!hasBookletAnswerKey(booklet)) {
+        // Eğer bu kitapçık için cevap anahtarı girilmemişse backend'e sahte anahtar gönderme!
+        continue;
+      }
       const bMap = state.bookletAnswerKeys[booklet] || {};
       const answerSections = template.sections.map((sec, secIdx) => {
         const answers = {};
         const courseRef = cfg.courses[secIdx] || { id: secIdx + 1 };
         for (let q = 1; q <= sec.questionCount; q++) {
           const keyId = `${courseRef.id}_${q}`;
-          const opt = bMap[keyId] || bMap[`${sec.id}_${q}`] || 'A';
-          answers[q] = opt;
+          const opt = bMap[keyId] || bMap[`${sec.id}_${q}`];
+          if (opt && String(opt).trim()) {
+            answers[q] = String(opt).trim();
+          }
         }
         return {
           examSectionId: sec.id,
@@ -1151,10 +1381,17 @@ function renderLiveSettingsSheet() {
   `;
 }
 
-async function printLiveSheet() {
-  if (state.activeTemplateId) {
-    try {
-      showToast('A4 optik form QuestPDF vektör PDF olarak indiriliyor...', 'info');
+async function downloadOpticalPdf() {
+  try {
+    if (!state.token || !state.isLoggedIn) {
+      showToast('Lütfen önce sisteme giriş yapınız.', 'warning');
+      navigateTo('auth');
+      return;
+    }
+    showToast('A4 optik form QuestPDF vektör motoruyla üretiliyor...', 'info');
+    await syncExamAndTemplateToBackend();
+
+    if (state.activeTemplateId) {
       const blob = await apiRequest(`/api/ExamTemplate/${state.activeTemplateId}/generate-form`, 'POST');
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
@@ -1163,13 +1400,18 @@ async function printLiveSheet() {
       document.body.appendChild(a);
       a.click();
       document.body.removeChild(a);
-      showToast('Optik form PDF başarıyla indirildi!', 'success');
+      URL.revokeObjectURL(url);
+      showToast('✅ A4 optik form PDF dosyası başarıyla indirildi!', 'success');
       return;
-    } catch (err) {
-      console.warn('PDF indirme hatası:', err);
     }
+  } catch (err) {
+    console.warn('PDF indirme hatası:', err);
+    showToast(`PDF indirme hatası: ${err.message}`, 'error');
   }
-  window.print();
+}
+
+async function printLiveSheet() {
+  await downloadOpticalPdf();
 }
 
 // ==========================================================================
@@ -1405,6 +1647,9 @@ function processUploadedFiles(files) {
       const isPdf = file.type === 'application/pdf' || file.name.toLowerCase().endsWith('.pdf');
       const reader = new FileReader();
       reader.onload = (e) => {
+        const rawBase = file.name ? file.name.replace(/\.[^/.]+$/, "").replace(/_/g, " ").replace(/-/g, " ").trim() : "";
+        const studentNum = `2026${String(100 + state.bulkFiles.length + 1).padStart(4, '0')}`;
+        const cleanStudentName = rawBase && !/^\d+$/.test(rawBase) && !rawBase.toLowerCase().startsWith('optik') ? rawBase : `Öğrenci - ${studentNum}`;
         state.bulkFiles.push({
           id: `file_${Date.now()}_${index}`,
           name: file.name,
@@ -1413,8 +1658,8 @@ function processUploadedFiles(files) {
           dataUrl: isPdf ? null : e.target.result,
           fileObject: file,
           isValidOptical: true,
-          studentName: `Öğrenci #${state.bulkFiles.length + 1}`,
-          studentId: `2026${String(100 + state.bulkFiles.length + 1).padStart(4, '0')}`,
+          studentName: cleanStudentName,
+          studentId: studentNum,
           booklet: index % 2 === 0 ? 'A' : 'B'
         });
         saveState();
@@ -1422,6 +1667,9 @@ function processUploadedFiles(files) {
       };
       if (!isPdf) reader.readAsDataURL(file);
       else {
+        const rawBase = file.name ? file.name.replace(/\.[^/.]+$/, "").replace(/_/g, " ").replace(/-/g, " ").trim() : "";
+        const studentNum = `2026${String(100 + state.bulkFiles.length + 1).padStart(4, '0')}`;
+        const cleanStudentName = rawBase && !/^\d+$/.test(rawBase) && !rawBase.toLowerCase().startsWith('optik') ? rawBase : `Öğrenci - ${studentNum}`;
         state.bulkFiles.push({
           id: `file_${Date.now()}_${index}`,
           name: file.name,
@@ -1430,8 +1678,8 @@ function processUploadedFiles(files) {
           dataUrl: null,
           fileObject: file,
           isValidOptical: true,
-          studentName: `Öğrenci #${state.bulkFiles.length + 1}`,
-          studentId: `2026${String(100 + state.bulkFiles.length + 1).padStart(4, '0')}`,
+          studentName: cleanStudentName,
+          studentId: studentNum,
           booklet: index % 2 === 0 ? 'A' : 'B'
         });
         saveState();
@@ -1443,6 +1691,9 @@ function processUploadedFiles(files) {
     state.scanMode = 'single';
     const file = files[0];
     const isPdf = file.type === 'application/pdf' || file.name.toLowerCase().endsWith('.pdf');
+    const rawBase = file.name ? file.name.replace(/\.[^/.]+$/, "").replace(/_/g, " ").replace(/-/g, " ").trim() : "";
+    const studentNum = '20261001';
+    const cleanStudentName = rawBase && !/^\d+$/.test(rawBase) && !rawBase.toLowerCase().startsWith('optik') ? rawBase : `Öğrenci - ${studentNum}`;
 
     if (isPdf) {
       state.singleFile = {
@@ -1452,8 +1703,8 @@ function processUploadedFiles(files) {
         dataUrl: null,
         fileObject: file,
         isValidOptical: true,
-        studentName: 'Kemal Sunal',
-        studentId: '20261001',
+        studentName: cleanStudentName,
+        studentId: studentNum,
         booklet: 'A'
       };
       saveState();
@@ -1464,6 +1715,10 @@ function processUploadedFiles(files) {
       reader.onload = (e) => {
         const dataUrl = e.target.result;
         validateOpticalForm(dataUrl, (isValid) => {
+          const imgRawBase = file.name ? file.name.replace(/\.[^/.]+$/, "").replace(/_/g, " ").replace(/-/g, " ").trim() : "";
+          const imgStudentNum = '20268801';
+          const imgStudentName = imgRawBase && !/^\d+$/.test(imgRawBase) && !imgRawBase.toLowerCase().startsWith('optik') ? imgRawBase : `Öğrenci - ${imgStudentNum}`;
+
           state.singleFile = {
             name: file.name,
             size: `${(file.size / 1024).toFixed(1)} KB`,
@@ -1471,8 +1726,8 @@ function processUploadedFiles(files) {
             dataUrl: dataUrl,
             fileObject: file,
             isValidOptical: isValid,
-            studentName: 'Kemal Sunal',
-            studentId: '20268801',
+            studentName: imgStudentName,
+            studentId: imgStudentNum,
             booklet: 'A'
           };
           saveState();
@@ -1823,7 +2078,8 @@ async function executeEvaluation() {
         const studentsList = results.students.map(s => ({
           sheetId: s.studentSheetId,
           rank: s.rank,
-          studentName: s.fullName || s.studentNumber,
+          studentName: getStudentDisplayName(s),
+          fullName: s.fullName,
           studentId: s.studentNumber,
           booklet: s.booklet || 'A',
           correct: s.correctCount,
@@ -1837,7 +2093,7 @@ async function executeEvaluation() {
 
         state.evaluation = {
           isBulk: isBulk,
-          studentName: top.fullName || top.studentNumber,
+          studentName: getStudentDisplayName(top),
           studentId: top.studentNumber,
           sheetId: top.studentSheetId,
           booklet: top.booklet || 'A',
@@ -1909,41 +2165,61 @@ function finishEvaluation() {
   if (isBulk && state.bulkFiles.length > 0) {
     const studentsList = [];
     state.bulkFiles.forEach((file, index) => {
-      let correct = 0;
-      let wrong = 0;
-      let empty = 0;
+      const booklet = file.booklet || (index % 2 === 0 ? 'A' : 'B');
+      const hasKey = hasBookletAnswerKey(booklet);
+      let questionsBreakdown;
+      let correct = 0, wrong = 0, empty = totalQ, net = 0, score = '0.00';
+      let needsReview = false;
+      let reviewReason = '';
+      let processingStatus = 'Done';
 
-      cfg.courses.forEach(c => {
-        for (let q = 1; q <= c.questionCount; q++) {
-          const rand = Math.random();
-          if (rand > 0.88) empty++;
-          else if (rand > 0.22) correct++;
-          else wrong++;
-        }
-      });
-
-      // 4 yanlış 1 doğruyu götürmez (Doğru sayısı doğrudan nettir)
-      const net = correct;
-      const score = Math.min(cfg.totalScore * (cfg.percentRatio / 100), net * pointPerQuestion).toFixed(2);
+      if (hasKey) {
+        questionsBreakdown = generateQuestionBreakdown(booklet);
+        correct = questionsBreakdown.filter(q => q.status === 'correct').length;
+        wrong = questionsBreakdown.filter(q => q.status === 'wrong').length;
+        empty = questionsBreakdown.filter(q => q.status === 'empty').length;
+        net = correct;
+        score = Math.min(cfg.totalScore * (cfg.percentRatio / 100), net * pointPerQuestion).toFixed(2);
+      } else {
+        // Kitapçık cevap anahtarında yoksa: boş geç ve geçersiz de!
+        questionsBreakdown = generateEmptyQuestionBreakdown();
+        correct = 0;
+        wrong = 0;
+        empty = totalQ;
+        net = 0;
+        score = '0.00';
+        needsReview = true;
+        reviewReason = `Geçersiz: ${booklet} Kitapçığı cevap anahtarı bulunamadı (Boş geçildi).`;
+        processingStatus = 'Invalid';
+      }
 
       studentsList.push({
         rank: 0,
-        studentName: file.studentName || `Öğrenci #${index + 1}`,
+        studentName: getStudentDisplayName(file),
+        fullName: file.fullName || file.studentName,
         studentId: file.studentId || `2026${String(1000 + index + 1).padStart(4, '0')}`,
-        booklet: file.booklet || (index % 2 === 0 ? 'A' : 'B'),
+        booklet: booklet,
         correct,
         wrong,
         empty,
         net: net.toFixed(2),
-        score: Number(score)
+        score: Number(score),
+        needsReview,
+        reviewReason,
+        processingStatus,
+        questionsBreakdown: questionsBreakdown
       });
     });
 
-    studentsList.sort((a, b) => b.score - a.score);
+    // Geçersiz kağıtlar listenin sonuna, geçerliler puana göre sıralanır
+    studentsList.sort((a, b) => {
+      if (a.processingStatus === 'Invalid' && b.processingStatus !== 'Invalid') return 1;
+      if (b.processingStatus === 'Invalid' && a.processingStatus !== 'Invalid') return -1;
+      return b.score - a.score;
+    });
     studentsList.forEach((s, idx) => s.rank = idx + 1);
 
     const top = studentsList[0] || {};
-    const questionsBreakdown = generateQuestionBreakdown(top.booklet || 'A');
 
     state.evaluation = {
       isBulk: true,
@@ -1957,7 +2233,10 @@ function finishEvaluation() {
       emptyCount: top.empty,
       netScore: top.net,
       finalScore: top.score.toFixed(2),
-      questionsBreakdown
+      needsReview: top.needsReview,
+      reviewReason: top.reviewReason,
+      processingStatus: top.processingStatus,
+      questionsBreakdown: top.questionsBreakdown || generateQuestionBreakdown(top.booklet || 'A')
     };
 
     // Geçmişe ekle
@@ -1967,36 +2246,33 @@ function finishEvaluation() {
       format: 'PDF',
       date: new Date().toLocaleDateString('tr-TR') + ' ' + new Date().toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' }),
       paperCount: studentsList.length,
-      status: 'Başarılı',
-      scoreAvg: (studentsList.reduce((acc, s) => acc + s.score, 0) / studentsList.length).toFixed(2)
+      status: studentsList.some(s => s.processingStatus === 'Invalid') ? 'İncelendi (Uyarı)' : 'Başarılı',
+      scoreAvg: (studentsList.reduce((acc, s) => acc + s.score, 0) / (studentsList.length || 1)).toFixed(2)
     });
 
-    showToast(`${studentsList.length} öğrencinin sınavı başarıyla tamamlandı!`, 'success');
+    const invalidCount = studentsList.filter(s => s.processingStatus === 'Invalid').length;
+    if (invalidCount > 0) {
+      showToast(`⚠️ ${studentsList.length} kağıttan ${invalidCount} tanesinde kitapçık cevap anahtarı bulunamadığı için boş geçildi ve GEÇERSİZ işaretlendi.`, 'warning');
+    } else {
+      showToast(`${studentsList.length} öğrencinin sınavı başarıyla tamamlandı!`, 'success');
+    }
   } else {
     // Tek Kağıt
-    let correct = 0;
-    let wrong = 0;
-    let empty = 0;
-
-    cfg.courses.forEach(c => {
-      for (let q = 1; q <= c.questionCount; q++) {
-        const rand = Math.random();
-        if (rand > 0.90) empty++;
-        else if (rand > 0.20) correct++;
-        else wrong++;
-      }
-    });
-
-    // 4 yanlış 1 doğruyu götürmez (Doğru sayısı doğrudan nettir)
+    const booklet = state.singleFile ? (state.singleFile.booklet || 'A') : (state.activeBooklet || 'A');
+    const hasKey = hasBookletAnswerKey(booklet);
+    const questionsBreakdown = hasKey ? generateQuestionBreakdown(booklet) : generateEmptyQuestionBreakdown();
+    const correct = hasKey ? questionsBreakdown.filter(q => q.status === 'correct').length : 0;
+    const wrong = hasKey ? questionsBreakdown.filter(q => q.status === 'wrong').length : 0;
+    const empty = hasKey ? questionsBreakdown.filter(q => q.status === 'empty').length : totalQ;
     const net = correct;
-    const score = Math.min(cfg.totalScore * (cfg.percentRatio / 100), net * pointPerQuestion).toFixed(2);
-    const booklet = state.singleFile ? state.singleFile.booklet : 'A';
-    const questionsBreakdown = generateQuestionBreakdown(booklet);
+    const score = hasKey ? Math.min(cfg.totalScore * (cfg.percentRatio / 100), net * pointPerQuestion).toFixed(2) : '0.00';
+    const studentDisplayName = state.singleFile ? getStudentDisplayName(state.singleFile) : 'Öğrenci - 20268801';
+    const studentId = state.singleFile ? state.singleFile.studentId : '20268801';
 
     state.evaluation = {
       isBulk: false,
-      studentName: state.singleFile ? state.singleFile.studentName : 'Kemal Sunal',
-      studentId: state.singleFile ? state.singleFile.studentId : '20268801',
+      studentName: studentDisplayName,
+      studentId: studentId,
       booklet: booklet,
       totalQuestions: totalQ,
       correctCount: correct,
@@ -2004,6 +2280,9 @@ function finishEvaluation() {
       emptyCount: empty,
       netScore: net.toFixed(2),
       finalScore: Number(score).toFixed(2),
+      needsReview: !hasKey,
+      reviewReason: !hasKey ? `Geçersiz: ${booklet} Kitapçığı cevap anahtarı bulunamadı (Boş geçildi).` : '',
+      processingStatus: !hasKey ? 'Invalid' : 'Done',
       questionsBreakdown
     };
 
@@ -2014,11 +2293,15 @@ function finishEvaluation() {
       format: state.singleFile && state.singleFile.type === 'pdf' ? 'PDF' : 'JPG',
       date: new Date().toLocaleDateString('tr-TR') + ' ' + new Date().toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' }),
       paperCount: 1,
-      status: 'İncelendi',
+      status: !hasKey ? 'Geçersiz (Cevap Anahtarı Yok)' : 'İncelendi',
       scoreAvg: Number(score).toFixed(2)
     });
 
-    showToast('Optik form okundu ve değerlendirildi!', 'success');
+    if (!hasKey) {
+      showToast(`⚠️ ${booklet} Kitapçığı için cevap anahtarı tanımlanmadığından optik form boş geçildi ve geçersiz sayıldı.`, 'warning');
+    } else {
+      showToast('Optik form okundu ve değerlendirildi!', 'success');
+    }
   }
 
   saveState();
@@ -2110,34 +2393,59 @@ function renderEvaluationResults() {
     const students = evalData.isBulk && evalData.studentsList ? evalData.studentsList : [
       {
         rank: 1,
+        sheetId: evalData.sheetId || 1,
         studentId: evalData.studentId || '20268801',
-        studentName: evalData.studentName || 'Kemal Sunal',
+        fullName: evalData.studentName || getStudentDisplayName(evalData),
+        studentName: evalData.studentName || getStudentDisplayName(evalData),
         booklet: evalData.booklet || 'A',
         correct: evalData.correctCount,
         wrong: evalData.wrongCount,
         empty: evalData.emptyCount,
         net: evalData.netScore,
-        score: evalData.finalScore
+        score: evalData.finalScore,
+        questionsBreakdown: evalData.questionsBreakdown
       }
     ];
+
+    // Varsayılan seçili öğrenciyi belirle
+    if (!state.selectedStudentId || !students.some(s => s.studentId === state.selectedStudentId)) {
+      state.selectedStudentId = students[0].studentId;
+    }
 
     if (bulkCountLabel) bulkCountLabel.innerText = `${students.length} Öğrenci Sıralandı. Detaylı A4 karne veya silme işlemi için butonları kullanabilirsiniz.`;
 
     students.forEach(st => {
       const tr = document.createElement('tr');
       tr.style.cursor = 'pointer';
-      tr.onclick = () => openStudentKarneModal(st.studentId, st.sheetId);
+      tr.setAttribute('data-student-id', st.studentId);
+      if (st.studentId === state.selectedStudentId) {
+        tr.className = 'selected-row';
+      }
+
+      const displayName = getStudentDisplayName(st);
+      const isInvalid = st.needsReview || st.processingStatus === 'Invalid' || String(st.processingStatus).toLowerCase() === 'invalid' || !hasBookletAnswerKey(st.booklet);
+
+      const bookletBadge = isInvalid
+        ? `<span class="badge badge-danger" title="${st.reviewReason || 'Cevap anahtarı tanımlanmadı'}">${st.booklet} (Geçersiz)</span>`
+        : `<span class="badge badge-accent">${st.booklet}</span>`;
+
+      const scoreBadge = isInvalid
+        ? `<span class="badge badge-danger font-bold">0.00 (Geçersiz)</span>`
+        : `<span class="badge badge-success font-bold">${st.score}</span>`;
+
+      // Satıra tıklanınca Master-Detail UX: Seçili öğrenciyi odakla, görseli ve soru dağılımını güncelle
+      tr.onclick = () => selectStudentResult(st.studentId, st.sheetId);
 
       tr.innerHTML = `
         <td><strong>#${st.rank}</strong></td>
         <td><code>${st.studentId}</code></td>
-        <td><strong>${st.studentName}</strong></td>
-        <td><span class="badge badge-accent">${st.booklet}</span></td>
+        <td><strong>${displayName}</strong></td>
+        <td>${bookletBadge}</td>
         <td class="text-success font-bold">${st.correct}</td>
         <td class="text-danger font-bold">${st.wrong}</td>
         <td class="text-warning font-bold">${st.empty}</td>
         <td><strong>${st.net}</strong></td>
-        <td><span class="badge badge-success font-bold">${st.score}</span></td>
+        <td>${scoreBadge}</td>
         <td class="no-print" style="white-space:nowrap;">
           <button class="btn btn-primary btn-sm" onclick="event.stopPropagation(); openStudentKarneModal('${st.studentId}', ${st.sheetId || 0})">
             📄 A4 Karne
@@ -2149,11 +2457,87 @@ function renderEvaluationResults() {
       `;
       bulkRows.appendChild(tr);
     });
-  }
 
-  // DERS BAZLI MİNİMALİST SORU DAĞILIMI (ÇORBA GİBİ OLMAYAN TEMİZ ALAN)
-  renderCourseBreakdownCards();
-  renderOpenCVOverlayCanvas();
+    const activeStudent = students.find(s => s.studentId === state.selectedStudentId) || students[0];
+    renderCourseBreakdownCards(activeStudent);
+    renderOpenCVOverlayCanvas(activeStudent);
+  } else {
+    renderCourseBreakdownCards();
+    renderOpenCVOverlayCanvas();
+  }
+}
+
+async function selectStudentResult(studentId, sheetId) {
+  if (!state.evaluation) return;
+  state.selectedStudentId = studentId;
+
+  // Tablodaki seçili satır vurgusunu anında güncelle
+  const rows = document.querySelectorAll('#bulk-table-rows tr');
+  rows.forEach(tr => {
+    if (tr.getAttribute('data-student-id') === String(studentId)) {
+      tr.classList.add('selected-row');
+    } else {
+      tr.classList.remove('selected-row');
+    }
+  });
+
+  const students = state.evaluation.studentsList || [state.evaluation];
+  let student = students.find(s => s.studentId === studentId) || state.evaluation;
+
+  // Başlıkları ve rozetleri anında senkronize et
+  const studentTitle = document.getElementById('student-specific-title');
+  const studentBooklet = document.getElementById('student-booklet-badge');
+  const displayName = getStudentDisplayName(student);
+
+  if (studentTitle) studentTitle.innerText = `${displayName} - Soru Dağılımı`;
+  if (studentBooklet) studentBooklet.innerText = `Kitapçık: ${student.booklet || 'A'} | Sıra: #${student.rank || 1}`;
+
+  // Eşzamanlı olarak kartları ve OpenCV tuvalini güncelle
+  renderCourseBreakdownCards(student);
+  renderOpenCVOverlayCanvas(student);
+
+  // Backend'den bu öğrencinin detaylı sorularını çek ve eşitle
+  const targetSheetId = sheetId || student.sheetId;
+  if (state.token && state.activeExamId && targetSheetId) {
+    try {
+      const report = await apiRequest(`/api/Exam/${state.activeExamId}/Results/Student/${targetSheetId}`, 'GET');
+      if (report && report.sections && report.sections.length > 0) {
+        student.fullName = report.fullName || student.fullName;
+        student.studentName = getStudentDisplayName(report);
+        student.studentId = report.studentNumber || student.studentId;
+        student.booklet = report.booklet || student.booklet;
+        student.rank = report.rank || student.rank;
+        student.correct = report.totalCorrect;
+        student.wrong = report.totalWrong;
+        student.empty = report.totalEmpty;
+        student.net = Number(report.netScore).toFixed(2);
+        student.score = Number(report.totalScore).toFixed(2);
+
+        const questions = [];
+        report.sections.forEach(sec => {
+          (sec.questions || []).forEach(q => {
+            questions.push({
+              courseId: sec.sectionId,
+              courseName: sec.sectionName,
+              num: q.questionNumber,
+              correctAnswer: q.correctOption,
+              studentAnswer: q.selectedOption,
+              status: (q.status || 'Empty').toLowerCase(),
+              points: q.status === 'Correct' ? (state.config.pointPerQ || 3.33) : 0
+            });
+          });
+        });
+        student.questionsBreakdown = questions;
+
+        if (state.selectedStudentId === studentId) {
+          renderCourseBreakdownCards(student);
+          renderOpenCVOverlayCanvas(student);
+        }
+      }
+    } catch (e) {
+      console.warn('Detaylı öğrenci karne verisi çekilemedi:', e);
+    }
+  }
 }
 
 async function deleteStudentResult(studentId) {
@@ -2176,8 +2560,9 @@ async function deleteStudentResult(studentId) {
     });
 
     if (state.evaluation.studentsList.length > 0) {
-      if (state.evaluation.studentId === studentId) {
+      if (state.evaluation.studentId === studentId || state.selectedStudentId === studentId) {
         const first = state.evaluation.studentsList[0];
+        state.selectedStudentId = first.studentId;
         state.evaluation.studentId = first.studentId;
         state.evaluation.studentName = first.studentName;
         state.evaluation.booklet = first.booklet;
@@ -2238,20 +2623,40 @@ function resetResultsView() {
   if (container) container.innerHTML = '';
 }
 
-function renderCourseBreakdownCards() {
+function renderCourseBreakdownCards(targetStudent = null) {
   const container = document.getElementById('course-breakdown-cards-container');
   const studentTitle = document.getElementById('student-specific-title');
   const studentBooklet = document.getElementById('student-booklet-badge');
   if (!container || !state.evaluation) return;
 
-  if (studentTitle) studentTitle.innerText = `${state.evaluation.studentName} Soru Dağılımı`;
-  if (studentBooklet) studentBooklet.innerText = `Kitapçık: ${state.evaluation.booklet || 'A'}`;
+  const students = state.evaluation.studentsList || [state.evaluation];
+  const student = targetStudent || (state.selectedStudentId ? students.find(s => s.studentId === state.selectedStudentId) : null) || state.evaluation;
+  const displayName = getStudentDisplayName(student);
+  const isInvalidStudent = student.needsReview ||
+    student.processingStatus === 'Invalid' ||
+    String(student.processingStatus).toLowerCase() === 'invalid' ||
+    !hasBookletAnswerKey(student.booklet);
+
+  if (studentTitle) {
+    studentTitle.innerText = isInvalidStudent
+      ? `${displayName} - [GEÇERSİZ KAĞIT / CEVAP ANAHTARI YOK]`
+      : `${displayName} - Soru Dağılımı`;
+  }
+  if (studentBooklet) {
+    studentBooklet.innerText = isInvalidStudent
+      ? `Kitapçık: ${student.booklet || 'A'} (Geçersiz) | Sıra: #${student.rank || 1}`
+      : `Kitapçık: ${student.booklet || 'A'} | Sıra: #${student.rank || 1}`;
+  }
 
   container.innerHTML = '';
-  const questions = state.evaluation.questionsBreakdown || [];
+  const questions = student.questionsBreakdown || state.evaluation.questionsBreakdown || [];
 
-  state.config.courses.forEach(course => {
-    const courseQuestions = questions.filter(q => q.courseId === course.id);
+  state.config.courses.forEach((course, courseIdx) => {
+    let courseQuestions = questions.filter(q => q.courseId === course.id || q.courseName === course.name);
+    if (courseQuestions.length === 0 && questions.length > 0) {
+      const startIdx = state.config.courses.slice(0, courseIdx).reduce((acc, c) => acc + Number(c.questionCount), 0);
+      courseQuestions = questions.slice(startIdx, startIdx + Number(course.questionCount));
+    }
     const cCorrect = courseQuestions.filter(q => q.status === 'correct').length;
     const cWrong = courseQuestions.filter(q => q.status === 'wrong').length;
     const cEmpty = courseQuestions.filter(q => q.status === 'empty').length;
@@ -2303,7 +2708,10 @@ function renderCourseBreakdownCards() {
   });
 }
 
-function renderOpenCVOverlayCanvas() {
+let activeOverlaySheetId = null;
+let activeOverlayImageCache = null;
+
+async function renderOpenCVOverlayCanvas(targetStudent = null) {
   const canvas = document.getElementById('omr-canvas-overlay');
   if (!canvas) return;
 
@@ -2311,13 +2719,65 @@ function renderOpenCVOverlayCanvas() {
   canvas.width = 640;
   canvas.height = 380;
 
+  const students = (state.evaluation && state.evaluation.studentsList) || (state.evaluation ? [state.evaluation] : []);
+  const student = targetStudent || (state.selectedStudentId ? students.find(s => s.studentId === state.selectedStudentId) : null) || state.evaluation;
+  if (!student) return;
+
+  const displayName = getStudentDisplayName(student);
+  const questions = student.questionsBreakdown || (state.evaluation && state.evaluation.questionsBreakdown) || [];
+
   ctx.fillStyle = '#070a11';
   ctx.fillRect(0, 0, canvas.width, canvas.height);
 
-  ctx.fillStyle = '#0e1524';
-  ctx.fillRect(30, 24, 580, 332);
+  // Öğrencinin taranmış optik kağıt görseli varsa arka planda göster
+  let originalImage = null;
+  const sheetId = student.sheetId;
 
-  // 4 Köşe Homografi Çerçevesi
+  if (sheetId && state.token && state.activeExamId) {
+    if (activeOverlaySheetId === sheetId && activeOverlayImageCache) {
+      originalImage = activeOverlayImageCache;
+    } else {
+      try {
+        const blob = await apiRequest(`/api/Exam/${state.activeExamId}/Sheets/${sheetId}/image`, 'GET');
+        if (blob instanceof Blob) {
+          const imgUrl = URL.createObjectURL(blob);
+          const img = new Image();
+          await new Promise((res, rej) => {
+            img.onload = res;
+            img.onerror = rej;
+            img.src = imgUrl;
+          });
+          activeOverlaySheetId = sheetId;
+          activeOverlayImageCache = img;
+          originalImage = img;
+        }
+      } catch (err) {
+        // Fallback: Görsel yüklenemezse blueprint modunda devam et
+      }
+    }
+  }
+
+  if (originalImage) {
+    ctx.save();
+    ctx.globalAlpha = 0.35;
+    ctx.drawImage(originalImage, 30, 24, 580, 332);
+    ctx.restore();
+  } else {
+    ctx.fillStyle = '#0e1524';
+    ctx.fillRect(30, 24, 580, 332);
+
+    // Kılavuz ızgarası
+    ctx.strokeStyle = '#1e293b';
+    ctx.lineWidth = 0.8;
+    for (let x = 40; x <= 600; x += 28) {
+      ctx.beginPath();
+      ctx.moveTo(x, 24);
+      ctx.lineTo(x, 356);
+      ctx.stroke();
+    }
+  }
+
+  // 4 Köşe Homografi Çerçevesi (Cyan OpenCV Registration)
   ctx.fillStyle = '#06b6d4';
   ctx.strokeStyle = '#06b6d4';
   ctx.lineWidth = 2;
@@ -2332,11 +2792,20 @@ function renderOpenCVOverlayCanvas() {
   ctx.closePath();
   ctx.stroke();
 
-  ctx.fillStyle = '#94a3b8';
-  ctx.font = '10px JetBrains Mono';
-  ctx.fillText('OPENCV HOMOGRAPHY WARP PERSPECTIVE 4-CORNER REGISTRATION [OK]', 50, 52);
+  ctx.fillStyle = '#06b6d4';
+  ctx.font = '10px JetBrains Mono, monospace';
+  ctx.fillText(`OPENCV HOMOGRAPHY WARP PERSPECTIVE 4-CORNER REGISTRATION [OK]`, 50, 48);
 
-  const questions = (state.evaluation && state.evaluation.questionsBreakdown) || [];
+  const isInvalidStudent = student.needsReview ||
+    student.processingStatus === 'Invalid' ||
+    String(student.processingStatus).toLowerCase() === 'invalid' ||
+    !hasBookletAnswerKey(student.booklet);
+
+  ctx.fillStyle = isInvalidStudent ? '#ef4444' : '#f8fafc';
+  ctx.font = 'bold 9.5px JetBrains Mono, monospace';
+  const invalidLabel = isInvalidStudent ? ' [GEÇERSİZ - CEVAP ANAHTARI YOK]' : '';
+  ctx.fillText(`Öğrenci: ${displayName} | No: ${student.studentId || '-'} | Kitapçık: ${student.booklet || 'A'}${invalidLabel}`, 50, 62);
+
   const cols = 4;
   const rows = Math.ceil(Math.min(questions.length, 24) / cols);
 
@@ -2348,7 +2817,7 @@ function renderOpenCVOverlayCanvas() {
     const startY = 76 + rowIndex * 26;
 
     ctx.fillStyle = '#cbd5e1';
-    ctx.font = 'bold 9px JetBrains Mono';
+    ctx.font = 'bold 9px JetBrains Mono, monospace';
     ctx.fillText(`S${q.num}`, startX, startY + 11);
 
     ['A', 'B', 'C', 'D'].forEach((opt, oIdx) => {
@@ -2358,7 +2827,7 @@ function renderOpenCVOverlayCanvas() {
       ctx.beginPath();
       ctx.arc(bubbleX, bubbleY, 5.5, 0, Math.PI * 2);
 
-      if (q.studentAnswer === opt) {
+      if (q.studentAnswer === opt || (q.studentAnswer === 'DOUBLE' && (q.correctAnswer === opt || opt === 'A'))) {
         if (q.status === 'correct') {
           ctx.fillStyle = '#10b981';
           ctx.fill();
@@ -2371,7 +2840,7 @@ function renderOpenCVOverlayCanvas() {
         ctx.lineWidth = 1.6;
         ctx.stroke();
       } else {
-        ctx.strokeStyle = '#334155';
+        ctx.strokeStyle = '#475569';
         ctx.lineWidth = 1;
         ctx.stroke();
       }
@@ -2398,7 +2867,7 @@ async function openStudentKarneModal(studentId, sheetId) {
       rank: 1,
       sheetId: sheetId || state.evaluation.sheetId,
       studentId: state.evaluation.studentId || studentId,
-      studentName: state.evaluation.studentName || 'Kemal Sunal',
+      studentName: getStudentDisplayName(state.evaluation),
       booklet: state.evaluation.booklet || 'A',
       correct: state.evaluation.correctCount,
       wrong: state.evaluation.wrongCount,
@@ -2409,14 +2878,15 @@ async function openStudentKarneModal(studentId, sheetId) {
   }
 
   const cfg = state.config;
-  let questions = state.evaluation.questionsBreakdown || [];
+  let questions = student.questionsBreakdown || state.evaluation.questionsBreakdown || [];
 
   const targetSheetId = sheetId || (student ? student.sheetId : null);
   if (state.token && state.activeExamId && targetSheetId) {
     try {
       const report = await apiRequest(`/api/Exam/${state.activeExamId}/Results/Student/${targetSheetId}`, 'GET');
       if (report && report.sections && report.sections.length > 0) {
-        student.studentName = report.fullName || student.studentName;
+        student.fullName = report.fullName || student.fullName;
+        student.studentName = getStudentDisplayName(report);
         student.studentId = report.studentNumber || student.studentId;
         student.booklet = report.booklet || student.booklet;
         student.rank = report.rank || student.rank;
@@ -2440,10 +2910,50 @@ async function openStudentKarneModal(studentId, sheetId) {
             });
           });
         });
+        student.questionsBreakdown = questions;
+        if (report.needsReview || report.processingStatus === 'Invalid') {
+          student.needsReview = true;
+          student.processingStatus = 'Invalid';
+          student.reviewReason = report.reviewReason || `Geçersiz: ${student.booklet} Kitapçığı cevap anahtarı bulunamadı (Boş geçildi).`;
+        }
       }
     } catch (e) {
       console.warn('Backend karne verisi çekilemedi, yerel veri kullanılıyor:', e);
     }
+  }
+
+  // Geçersizlik kontrolü (Cevap anahtarı olmayan kitapçık veya Invalid durumundaki kağıt)
+  const isInvalidStudent = student.needsReview ||
+    student.processingStatus === 'Invalid' ||
+    String(student.processingStatus).toLowerCase() === 'invalid' ||
+    !hasBookletAnswerKey(student.booklet);
+
+  if (isInvalidStudent) {
+    student.needsReview = true;
+    student.processingStatus = 'Invalid';
+    student.reviewReason = student.reviewReason || `Geçersiz: ${student.booklet} Kitapçığı için cevap anahtarı tanımlanmadığından optik form değerlendirilmemiş ve boş geçilmiştir.`;
+    if (questions && questions.length > 0) {
+      questions.forEach(q => {
+        q.status = 'empty';
+        q.points = '0.00';
+        q.correctAnswer = '-';
+      });
+    }
+    student.correct = 0;
+    student.wrong = 0;
+    student.empty = questions.length;
+    student.net = '0.00';
+    student.score = '0.00';
+  } else if (questions && questions.length > 0) {
+    const derivedCorrect = questions.filter(q => q.status === 'correct').length;
+    const derivedWrong = questions.filter(q => q.status === 'wrong').length;
+    const derivedEmpty = questions.filter(q => q.status === 'empty').length;
+    student.correct = derivedCorrect;
+    student.wrong = derivedWrong;
+    student.empty = derivedEmpty;
+    student.net = derivedCorrect.toFixed(2);
+    const pointPerQ = Number(cfg.pointPerQ) || (cfg.totalScore / (questions.length || 1));
+    student.score = Math.min(cfg.totalScore * (cfg.percentRatio / 100), derivedCorrect * pointPerQ).toFixed(2);
   }
 
   const optCount = cfg.optionCount || 5;
@@ -2494,8 +3004,19 @@ async function openStudentKarneModal(studentId, sheetId) {
     `;
   });
 
+  const invalidBannerHTML = isInvalidStudent ? `
+    <div style="background:#fee2e2;border:1.5px solid #ef4444;border-radius:6px;padding:10px 14px;margin-bottom:12px;color:#991b1b;font-weight:700;font-size:0.84rem;display:flex;align-items:center;gap:10px;">
+      <span style="font-size:1.4rem;">⚠️</span>
+      <div>
+        <strong style="text-transform:uppercase;">DİKKAT / GEÇERSİZ KAĞIT:</strong><br>
+        <span style="font-weight:500;font-size:0.80rem;">${student.reviewReason || (student.booklet + ' Kitapçığı için cevap anahtarı tanımlanmadığından dolayı bu optik form değerlendirilmemiş ve boş geçilmiştir.')}</span>
+      </div>
+    </div>
+  ` : '';
+
   container.innerHTML = `
     <div class="karne-paper-wrapper" style="--col-count: ${Math.max(cfg.courses.length, 3)};">
+      ${invalidBannerHTML}
       <div class="karne-header-bar">
         <div>
           <h2 style="font-size:1.25rem;font-weight:800;margin:0;">${cfg.institution ? cfg.institution.toUpperCase() : 'MÜHENDİSLİK FAKÜLTESİ'}</h2>
@@ -2510,15 +3031,15 @@ async function openStudentKarneModal(studentId, sheetId) {
       <div class="karne-student-info-grid">
         <div>
           <div style="font-size:0.75rem;color:#64748b;font-weight:600;">ÖĞRENCİ BİLGİLERİ</div>
-          <div style="font-size:1.05rem;font-weight:800;color:#0f172a;margin-top:2px;">${student.studentName}</div>
+          <div style="font-size:1.05rem;font-weight:800;color:#0f172a;margin-top:2px;">${getStudentDisplayName(student)}</div>
           <div style="font-size:0.82rem;color:#334155;margin-top:2px;">
-            Öğrenci No: <strong>${student.studentId}</strong> &bull; Kitapçık: <strong>${student.booklet}</strong>
+            Öğrenci No: <strong>${student.studentId}</strong> &bull; Kitapçık: <strong>${student.booklet}</strong> ${isInvalidStudent ? '<span class="badge badge-danger" style="margin-left:4px;">Geçersiz</span>' : ''}
           </div>
         </div>
 
         <div style="text-align:right;">
           <div style="font-size:0.75rem;color:#64748b;font-weight:600;">TOPLAM PUAN</div>
-          <div style="font-size:1.6rem;font-weight:900;color:#2563eb;line-height:1.1;">${student.score}</div>
+          <div style="font-size:1.6rem;font-weight:900;color:${isInvalidStudent ? '#ef4444' : '#2563eb'};line-height:1.1;">${isInvalidStudent ? '0.00 (Geçersiz)' : student.score}</div>
           <div style="font-size:0.75rem;color:#475569;">/ ${cfg.totalScore} Puan (%${cfg.percentRatio || 100})</div>
         </div>
       </div>

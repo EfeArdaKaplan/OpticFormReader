@@ -63,7 +63,7 @@ namespace business.Services
             if (questionGroups.TryGetValue((BookletSectionId, 1), out var bookletOptions))
             {
                 var detectedBooklet = ResolveBestOption(bookletOptions);
-                if (!string.IsNullOrEmpty(detectedBooklet))
+                if (!string.IsNullOrEmpty(detectedBooklet) && detectedBooklet != "DOUBLE")
                 {
                     result.Booklet = detectedBooklet;
                 }
@@ -81,7 +81,7 @@ namespace business.Services
                 if (questionGroups.TryGetValue((StudentNumberSectionId, col), out var digits))
                 {
                     var opt = ResolveBestOption(digits);
-                    studentNoBuilder.Append(!string.IsNullOrEmpty(opt) ? opt : "?");
+                    studentNoBuilder.Append(!string.IsNullOrEmpty(opt) && opt != "DOUBLE" ? opt : "?");
                 }
             }
             result.StudentNumber = studentNoBuilder.ToString();
@@ -98,7 +98,7 @@ namespace business.Services
                 if (questionGroups.TryGetValue((TcNumberSectionId, col), out var digits))
                 {
                     var opt = ResolveBestOption(digits);
-                    tcBuilder.Append(!string.IsNullOrEmpty(opt) ? opt : " ");
+                    tcBuilder.Append(!string.IsNullOrEmpty(opt) && opt != "DOUBLE" ? opt : " ");
                 }
             }
             result.TcNo = tcBuilder.ToString().Trim();
@@ -110,7 +110,7 @@ namespace business.Services
                 if (questionGroups.TryGetValue((NameSectionId, col), out var letters))
                 {
                     var opt = ResolveBestOption(letters);
-                    nameBuilder.Append(!string.IsNullOrEmpty(opt) ? opt : " ");
+                    nameBuilder.Append(!string.IsNullOrEmpty(opt) && opt != "DOUBLE" ? opt : " ");
                 }
             }
             string rawName = nameBuilder.ToString().Trim();
@@ -158,12 +158,13 @@ namespace business.Services
             float totalLuminance = 0f;
             int count = 0;
 
-            // Daire içinde spiral/örnekleme pikselleri al
-            for (int y = -radius; y <= radius; y += 2)
+            // Daire içinde örnekleme pikselleri al (iç çekirdek %85 çap: dış çizgi gürültüsünü filtreler)
+            int sampleRadius = Math.Max(2, (int)(radius * 0.85f));
+            for (int y = -sampleRadius; y <= sampleRadius; y += 2)
             {
-                for (int x = -radius; x <= radius; x += 2)
+                for (int x = -sampleRadius; x <= sampleRadius; x += 2)
                 {
-                    if (x * x + y * y <= radius * radius)
+                    if (x * x + y * y <= sampleRadius * sampleRadius)
                     {
                         var pixel = bitmap.GetPixel(cx + x, cy + y);
                         // Gri tonlama parlaklığı (0 = siyah, 255 = beyaz)
@@ -192,26 +193,37 @@ namespace business.Services
         {
             if (choices == null || choices.Count == 0) return (null, 0);
 
+            // 1) Adaptif Eşik ve Arka Plan Taban Kalibrasyonu (Adaptive Baseline & Relative Contrast)
+            float minDarkness = choices.Min(c => c.Darkness);
+            float maxDarkness = choices.Max(c => c.Darkness);
+            float contrast = maxDarkness - minDarkness;
+
+            // Kağıt taban koyuluğuna göre dinamik eşik:
+            // En az 0.22f mutlak koyuluk ve yerel tabana kıyasla en az 0.14f bağıl kontrast aranır
+            float dynamicThreshold = Math.Max(0.22f, minDarkness + 0.14f);
+
             var sorted = choices.OrderByDescending(c => c.Darkness).ToList();
             var top = sorted[0];
 
-            // Eğer en koyu baloncuk bile yeterince koyu değilse -> Boş bırakılmıştır
-            if (top.Darkness < DarknessThreshold)
+            // En koyu baloncuk bile dinamik eşiğin veya bağıl kontrastın altındaysa -> Kesinlikle BOŞ
+            if (top.Darkness < dynamicThreshold || contrast < 0.12f)
             {
                 return (null, 0);
             }
 
-            // Eğer ikinci bir şık da neredeyse birincisi kadar koyuysa -> Çift işaretleme yapılmıştır
+            // 2) Çift İşaretleme Kontrolü (Double Marking Detection):
+            // Eğer ikinci en koyu baloncuk da dinamik eşiği geçiyorsa ve birinciye çok yakınsa -> GEÇERSİZ / YANLIŞ
             if (sorted.Count > 1)
             {
                 var second = sorted[1];
-                if (second.Darkness >= DarknessThreshold && (top.Darkness - second.Darkness) < MarginDifference)
+                if (second.Darkness >= dynamicThreshold && (top.Darkness - second.Darkness) < MarginDifference)
                 {
-                    return (null, 0); // Çift işaretleme geçersiz sayılır
+                    return ("DOUBLE", 0); // Kural gereği çift işaretleme geçersiz sayılır (yanlış kabul edilir, boş değil!)
                 }
             }
 
-            double confidence = Math.Clamp(top.Darkness, 0.5, 1.0);
+            // 3) Tekil Geçerli İşaretleme: Güven skoru hesaplanır
+            double confidence = Math.Clamp((top.Darkness - minDarkness) / Math.Max(0.01f, 1.0f - minDarkness), 0.5, 1.0);
             return (top.Option, confidence);
         }
     }

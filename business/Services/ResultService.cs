@@ -1,4 +1,4 @@
-﻿using core.DTOs;
+using core.DTOs;
 using core.Entities;
 using core.interfaces;
 using core.Interfaces;
@@ -76,7 +76,12 @@ namespace business.Services
                 }).ToList();
 
                 string fullName = $"{sheet.FirstName} {sheet.LastName}".Trim();
-                if (string.IsNullOrWhiteSpace(fullName)) fullName = "İsimsiz Öğrenci";
+                if (string.IsNullOrWhiteSpace(fullName))
+                {
+                    fullName = !string.IsNullOrWhiteSpace(sheet.StudentNumber) && sheet.StudentNumber != "1"
+                        ? $"Öğrenci - {sheet.StudentNumber}"
+                        : $"Öğrenci - 2026{sheet.Id:D4}";
+                }
 
                 studentsList.Add(new StudentResultItemDto
                 {
@@ -92,6 +97,7 @@ namespace business.Services
                     TotalScore = totalScore,
                     NeedsReview = sheet.NeedsReview,
                     ReviewReason = sheet.ReviewReason,
+                    ProcessingStatus = sheet.ProcessingStatus ?? (sheet.NeedsReview ? "NeedsReview" : "Done"),
                     SectionResults = sectionSummaries
                 });
             }
@@ -181,7 +187,13 @@ namespace business.Services
                     string selected = studentAns.SelectedOption ?? string.Empty;
 
                     string status = "Empty";
-                    if (!string.IsNullOrEmpty(selected))
+                    bool isInvalidSheet = sheet.NeedsReview || sheet.ProcessingStatus == "Invalid";
+                    if (isInvalidSheet || string.IsNullOrEmpty(correctOpt))
+                    {
+                        status = "Empty";
+                        correctOpt = "-";
+                    }
+                    else if (!string.IsNullOrEmpty(selected))
                     {
                         status = string.Equals(selected, correctOpt, StringComparison.OrdinalIgnoreCase)
                             ? "Correct"
@@ -211,7 +223,12 @@ namespace business.Services
             }
 
             string fullName = $"{sheet.FirstName} {sheet.LastName}".Trim();
-            if (string.IsNullOrWhiteSpace(fullName)) fullName = "İsimsiz Öğrenci";
+            if (string.IsNullOrWhiteSpace(fullName))
+            {
+                fullName = !string.IsNullOrWhiteSpace(sheet.StudentNumber) && sheet.StudentNumber != "1"
+                    ? $"Öğrenci - {sheet.StudentNumber}"
+                    : $"Öğrenci - 2026{sheet.Id:D4}";
+            }
 
             return new StudentDetailedReportDto
             {
@@ -230,6 +247,9 @@ namespace business.Services
                 TotalCorrect = studentItem?.CorrectCount ?? 0,
                 TotalWrong = studentItem?.WrongCount ?? 0,
                 TotalEmpty = studentItem?.EmptyCount ?? 0,
+                NeedsReview = sheet.NeedsReview,
+                ReviewReason = sheet.ReviewReason,
+                ProcessingStatus = sheet.ProcessingStatus ?? (sheet.NeedsReview ? "NeedsReview" : "Done"),
                 Sections = sectionsReport
             };
         }

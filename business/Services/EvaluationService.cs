@@ -169,9 +169,53 @@ namespace business.Services
                     sheet.Booklet = omr.Booklet ?? "A"; // Okunamazsa varsayılan A veya NeedsReview
                     sheet.NeedsReview = omr.NeedsReview;
                     sheet.ReviewReason = omr.ReviewReason;
-                    sheet.ProcessingStatus = "Done";
+                    sheet.ProcessingStatus = omr.NeedsReview ? "NeedsReview" : "Done";
 
                     string activeBooklet = (sheet.Booklet ?? "A").ToUpperInvariant();
+
+                    // Kitapçığın cevap anahtarında tanımlı olup olmadığını kontrol et (en az 1 dolu geçerli cevap olmalı)
+                    bool hasBookletKey = keyMap.Keys.Any(k => k.Booklet == activeBooklet && keyMap[k].Values.Any(v => !string.IsNullOrWhiteSpace(v) && v.Trim() != "-"));
+
+                    if (!hasBookletKey)
+                    {
+                        // B (veya tanımlanmamış kitapçık) optik kağıtta seçiliyse ve cevap anahtarında yoksa:
+                        // "b yi bos gec ve gecersiz de gonderilen optiklere"
+                        sheet.ProcessingStatus = "Invalid";
+                        sheet.NeedsReview = true;
+                        sheet.ReviewReason = $"Geçersiz: {activeBooklet} Kitapçığı cevap anahtarı bulunamadı (Boş geçildi).";
+
+                        foreach (var section in template.Sections)
+                        {
+                            for (int q = 1; q <= section.QuestionCount; q++)
+                            {
+                                omr.Answers.TryGetValue((section.Id, q), out var studentChoice);
+                                string selected = studentChoice.Option ?? string.Empty;
+
+                                allAnswers.Add(new StudentAnswer
+                                {
+                                    StudentSheetId = sheet.Id,
+                                    ExamSectionId = section.Id,
+                                    QuestionNumber = q,
+                                    SelectedOption = selected,
+                                    ConfidenceScore = studentChoice.Confidence
+                                });
+                            }
+
+                            allResults.Add(new ExamResult
+                            {
+                                StudentSheetId = sheet.Id,
+                                ExamSectionId = section.Id,
+                                CorrectCount = 0,
+                                WrongCount = 0,
+                                EmptyCount = section.QuestionCount,
+                                Score = 0.0,
+                                CalculatedAt = DateTime.UtcNow
+                            });
+                        }
+
+                        updatedSheets.Add(sheet);
+                        return;
+                    }
 
                     // Ders bazında cevapları karşılaştır ve puanla
                     foreach (var section in template.Sections)
@@ -189,12 +233,13 @@ namespace business.Services
                             string selected = studentChoice.Option ?? string.Empty;
 
                             correctAnswers.TryGetValue(q, out var correctOpt);
+                            correctOpt ??= string.Empty;
 
                             if (string.IsNullOrEmpty(selected))
                             {
                                 empty++;
                             }
-                            else if (string.Equals(selected, correctOpt, StringComparison.OrdinalIgnoreCase))
+                            else if (!string.IsNullOrEmpty(correctOpt) && string.Equals(selected.Trim(), correctOpt.Trim(), StringComparison.OrdinalIgnoreCase))
                             {
                                 correct++;
                             }

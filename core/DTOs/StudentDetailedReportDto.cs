@@ -1,4 +1,4 @@
-﻿namespace core.DTOs
+namespace core.DTOs
 {
     public class StudentDetailedReportDto
     {
@@ -17,6 +17,9 @@
         public int TotalCorrect { get; set; }
         public int TotalWrong { get; set; }
         public int TotalEmpty { get; set; }
+        public bool NeedsReview { get; set; }
+        public string? ReviewReason { get; set; }
+        public string ProcessingStatus { get; set; } = "Done";
         public List<SectionDetailedReportDto> Sections { get; set; } = new();
     }
 

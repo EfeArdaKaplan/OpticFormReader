@@ -1,4 +1,7 @@
 <Solution>
+  <Folder Name="/tests/">
+    <Project Path="tests/OpticEngine.Tests/OpticEngine.Tests.csproj" />
+  </Folder>
   <Project Path="business/business.csproj" />
   <Project Path="core/core.csproj" />
   <Project Path="data/data.csproj" />

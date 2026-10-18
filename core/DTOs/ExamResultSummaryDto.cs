@@ -1,4 +1,4 @@
-﻿namespace core.DTOs
+namespace core.DTOs
 {
     public class ExamResultSummaryDto
     {
@@ -27,6 +27,7 @@
         public double TotalScore { get; set; }
         public bool NeedsReview { get; set; }
         public string? ReviewReason { get; set; }
+        public string ProcessingStatus { get; set; } = "Done";
         public List<SectionResultSummaryDto> SectionResults { get; set; } = new();
     }
 

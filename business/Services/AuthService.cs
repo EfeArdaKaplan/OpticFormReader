@@ -1,4 +1,4 @@
-﻿using core.DTOs;
+using core.DTOs;
 using core.Entities;
 using core.Interfaces;
 using Microsoft.Extensions.Configuration;
@@ -65,6 +65,24 @@ namespace business.Services
             };
         }
 
+        public async Task<LoginResponseDto> RefreshTokenAsync(int userId)
+        {
+            var user = await _userRepository.GetByIdAsync(userId);
+            if (user == null)
+            {
+                throw new Exception("Kullanıcı bulunamadı veya oturum geçersiz.");
+            }
+
+            var token = GenerateJwtToken(user);
+
+            return new LoginResponseDto
+            {
+                Token = token,
+                FullName = user.FullName,
+                Email = user.Email
+            };
+        }
+
         private string GenerateJwtToken(User user)
         {
             var claims = new List<Claim>
@@ -77,11 +95,12 @@ namespace business.Services
             var key = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(_configuration["Jwt:Key"]!));
             var creds = new SigningCredentials(key, SecurityAlgorithms.HmacSha256);
 
+            // 20 dakika sınırlı geçerlilik süresi (Sliding refresh & Inactivity ile korunur)
             var token = new JwtSecurityToken(
                 issuer: _configuration["Jwt:Issuer"],
                 audience: _configuration["Jwt:Audience"],
                 claims: claims,
-                expires: DateTime.UtcNow.AddHours(8),
+                expires: DateTime.UtcNow.AddMinutes(20),
                 signingCredentials: creds
             );
 
