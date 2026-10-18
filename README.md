@@ -219,7 +219,24 @@ Sistemi anında test edebilmeniz için `sample_sheets/` dizini altında test sen
 
 ---
 
-## 👨‍💻 Geliştirici & Lisans
+## 👥 Proje Ekibi & Katkıda Bulunanlar (Credits)
 
-* **Geliştirici:** Efe Arda Kaplan ([@EfeArdaKaplan](https://github.com/EfeArdaKaplan))
-* **Lisans:** Bu proje [MIT Lisansı](LICENSE) kapsamında açık kaynak olarak paylaşılmıştır.
+<div align="center">
+
+| 💻 Backend & Core Mimari | 🎨 Frontend & UI/UX Geliştirme |
+| :---: | :---: |
+| **Efe Arda Kaplan** | **Zeynep Yaren Keskin** |
+| [![GitHub](https://img.shields.io/badge/GitHub-EfeArdaKaplan-181717?style=for-the-badge&logo=github)](https://github.com/EfeArdaKaplan) | [![GitHub](https://img.shields.io/badge/GitHub-zeynepyarenkeskin-181717?style=for-the-badge&logo=github)](https://github.com/zeynepyarenkeskin) |
+| *Çekirdek Mimari, Paralel OMR Motoru & REST API* | *Modern SPA Web Arayüzü, UI/UX Tasarımı & Dashboard* |
+
+</div>
+
+<br>
+
+> 🌟 **Özel Teşekkür:** Modern, responsive, çift temalı (Dark/Light) ve zengin kullanıcı deneyimine (Master-Detail UX, canlı OpenCV tuvali, dinamik A4 karne) sahip kurumsal **Frontend** geliştirmeleri ve değerli katkıları için **[Zeynep Yaren Keskin](https://github.com/zeynepyarenkeskin)**'e (@zeynepyarenkeskin) teşekkür ederiz!
+
+---
+
+## 📄 Lisans
+
+Bu proje [MIT Lisansı](LICENSE) kapsamında açık kaynak olarak paylaşılmıştır.
