@@ -1,6 +1,7 @@
 ﻿using core.DTOs;
 using core.Entities;
 using core.Interfaces;
+using System.Text.Json;
 
 namespace business.Services
 {
@@ -9,10 +10,14 @@ namespace business.Services
         private const int MaxTotalQuestions = 150;
 
         private readonly IExamTemplateRepository _examTemplateRepository;
+        private readonly FormGeneratorService _formGeneratorService;
 
-        public ExamTemplateService(IExamTemplateRepository examTemplateRepository)
+        public ExamTemplateService(
+            IExamTemplateRepository examTemplateRepository,
+            FormGeneratorService formGeneratorService)
         {
             _examTemplateRepository = examTemplateRepository;
+            _formGeneratorService = formGeneratorService;
         }
 
         public async Task<ExamTemplateDto> CreateAsync(int ownerUserId, CreateExamTemplateDto request)
@@ -74,6 +79,7 @@ namespace business.Services
             foreach (var section in BuildSections(request.Sections))
             {
                 template.Sections.Add(section);
+                template.LayoutJson = string.Empty;
             }
 
             await _examTemplateRepository.UpdateAsync(template);
@@ -89,6 +95,24 @@ namespace business.Services
             }
 
             await _examTemplateRepository.DeleteAsync(id);
+        }
+
+        public async Task<byte[]> GenerateFormPdfAsync(int id, int ownerUserId)
+        {
+            var template = await _examTemplateRepository.GetByIdAsync(id);
+
+            if (template == null || template.OwnerUserId != ownerUserId)
+            {
+                throw new Exception("Şablon bulunamadı veya bu şablona erişim yetkiniz yok.");
+            }
+
+            var layout = _formGeneratorService.BuildLayout(template);
+
+            template.LayoutJson = JsonSerializer.Serialize(layout);
+            template.SourceType = "Standard";
+            await _examTemplateRepository.UpdateAsync(template);
+
+            return _formGeneratorService.RenderPdf(layout);
         }
 
         private static void Validate(CreateExamTemplateDto request)

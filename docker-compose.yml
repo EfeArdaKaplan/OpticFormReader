@@ -1,0 +1,59 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: optic_postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: opticdb
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d opticdb"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  seaweedfs:
+    image: chrislusf/seaweedfs:latest
+    container_name: optic_seaweedfs
+    restart: unless-stopped
+    command: "server -s3 -dir=/data"
+    ports:
+      - "8333:8333"
+      - "9333:9333"
+    volumes:
+      - seaweedfs_data:/data
+
+  optic-app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: optic_web_app
+    restart: unless-stopped
+    environment:
+      ASPNETCORE_ENVIRONMENT: Development
+      ConnectionStrings__DefaultConnection: "Host=postgres;Port=5432;Database=opticdb;Username=postgres;Password=postgres"
+      Jwt__Key: "super_secret_jwt_key_that_is_at_least_32_chars_long_12345"
+      Jwt__Issuer: "OpticalReaderApi"
+      Jwt__Audience: "OpticalReaderClient"
+      Storage__Endpoint: "http://seaweedfs:8333"
+      Storage__BucketName: "optic-sheets"
+      Storage__ForcePathStyle: "true"
+      Storage__AccessKey: "any"
+      Storage__SecretKey: "any"
+      ASPNETCORE_URLS: "http://+:5144"
+    ports:
+      - "5144:5144"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      seaweedfs:
+        condition: service_started
+
+volumes:
+  postgres_data:
+  seaweedfs_data:

@@ -94,5 +94,20 @@ namespace WebApi.Controllers
                 return BadRequest(new { message = ex.Message });
             }
         }
+
+        [HttpPost("{id}/generate-form")]
+        public async Task<IActionResult> GenerateForm(int id)
+        {
+            try
+            {
+                var userId = GetCurrentUserId();
+                var pdf = await _examTemplateService.GenerateFormPdfAsync(id, userId);
+                return File(pdf, "application/pdf", $"optik-form-{id}.pdf");
+            }
+            catch (Exception ex)
+            {
+                return BadRequest(new { message = ex.Message });
+            }
+        }
     }
 }

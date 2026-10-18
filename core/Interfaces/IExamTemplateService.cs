@@ -12,5 +12,6 @@ namespace core.Interfaces
         Task<ExamTemplateDto?> GetByIdAsync(int id, int ownerUserId);
         Task UpdateAsync(int id, int ownerUserId, CreateExamTemplateDto request);
         Task DeleteAsync(int id, int ownerUserId);
+        Task<byte[]> GenerateFormPdfAsync(int id, int ownerUserId);
     }
 }
