@@ -186,7 +186,7 @@ dotnet test
 
 ```text
 Toplam 1 test dosyası belirtilen desenle eşleşti.
-Başarılı! - Başarısız: 0, Başarılı: 6, Atlanan: 0, Toplam: 6, Süre: 525 ms (OpticEngine.Tests.dll)
+Başarılı! - Başarısız: 0, Başarılı: 10, Atlanan: 0, Toplam: 10, Süre: 1 s (OpticEngine.Tests.dll)
 ```
 
 ---

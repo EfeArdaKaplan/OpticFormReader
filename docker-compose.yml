@@ -48,6 +48,12 @@ services:
       ASPNETCORE_URLS: "http://+:5144"
     ports:
       - "5144:5144"
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:5144/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
     depends_on:
       postgres:
         condition: service_healthy

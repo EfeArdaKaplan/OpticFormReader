@@ -1,4 +1,4 @@
-﻿using core.Entities;
+using core.Entities;
 using Microsoft.EntityFrameworkCore;
 
 namespace data.Context
@@ -32,6 +32,35 @@ namespace data.Context
             modelBuilder.Entity<AnswerKey>()
                 .HasIndex(k => new { k.ExamId, k.ExamSectionId, k.Booklet })
                 .IsUnique();
+
+            // Performans İndeksleri (Postgres Best Practices & SQL Optimization)
+            modelBuilder.Entity<Exam>()
+                .HasIndex(e => e.OwnerUserId)
+                .HasDatabaseName("IX_Exams_OwnerUserId");
+
+            modelBuilder.Entity<ExamTemplate>()
+                .HasIndex(t => t.OwnerUserId)
+                .HasDatabaseName("IX_ExamTemplates_OwnerUserId");
+
+            modelBuilder.Entity<StudentSheet>()
+                .HasIndex(s => s.ExamId)
+                .HasDatabaseName("IX_StudentSheets_ExamId");
+
+            modelBuilder.Entity<StudentSheet>()
+                .HasIndex(s => s.UploadBatchId)
+                .HasDatabaseName("IX_StudentSheets_UploadBatchId");
+
+            modelBuilder.Entity<StudentAnswer>()
+                .HasIndex(a => a.StudentSheetId)
+                .HasDatabaseName("IX_StudentAnswers_StudentSheetId");
+
+            modelBuilder.Entity<ExamResult>()
+                .HasIndex(r => r.StudentSheetId)
+                .HasDatabaseName("IX_ExamResults_StudentSheetId");
+
+            modelBuilder.Entity<UploadBatch>()
+                .HasIndex(b => b.ExamId)
+                .HasDatabaseName("IX_UploadBatches_ExamId");
         }
     }
 }

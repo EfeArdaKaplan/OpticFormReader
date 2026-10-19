@@ -1,4 +1,4 @@
-﻿using core.Entities;
+using core.Entities;
 using core.Interfaces;
 using data.Context;
 using Microsoft.EntityFrameworkCore;
@@ -43,6 +43,7 @@ namespace data.Repositories
         public async Task<List<StudentSheet>> GetByBatchIdAsync(int uploadBatchId)
         {
             return await _context.StudentSheets
+                .AsNoTracking()
                 .Where(s => s.UploadBatchId == uploadBatchId)
                 .OrderBy(s => s.PageNumber)
                 .ToListAsync();

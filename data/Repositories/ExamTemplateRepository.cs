@@ -1,4 +1,4 @@
-﻿using core.Entities;
+using core.Entities;
 using core.Interfaces;
 using data.Context;
 using Microsoft.EntityFrameworkCore;
@@ -24,6 +24,7 @@ namespace data.Repositories
         public async Task<List<ExamTemplate>> GetByOwnerUserIdAsync(int ownerUserId)
         {
             return await _context.ExamTemplates
+                .AsNoTracking()
                 .Include(t => t.Sections)
                 .Where(t => t.OwnerUserId == ownerUserId)
                 .ToListAsync();

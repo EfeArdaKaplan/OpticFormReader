@@ -1,4 +1,4 @@
-﻿using core.Entities;
+using core.Entities;
 using core.interfaces;
 using data.Context;
 using Microsoft.EntityFrameworkCore;
@@ -25,6 +25,7 @@ namespace data.Repositories
         public async Task<List<Exam>> GetByOwnerUserIdAsync(int ownerUserId)
         {
             return await _context.Exams
+                .AsNoTracking()
                 .Where(e => e.OwnerUserId == ownerUserId)
                 .ToListAsync();
         }

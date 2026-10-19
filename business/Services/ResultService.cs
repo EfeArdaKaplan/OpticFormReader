@@ -43,6 +43,7 @@ namespace business.Services
             var sheetIds = sheets.Select(s => s.Id).ToList();
 
             var allResults = await _context.ExamResults
+                .AsNoTracking()
                 .Where(r => sheetIds.Contains(r.StudentSheetId))
                 .ToListAsync();
 
@@ -155,6 +156,7 @@ namespace business.Services
 
             // Öğrencinin İşaretlediği Cevapları Al
             var studentAnswers = await _context.StudentAnswers
+                .AsNoTracking()
                 .Where(a => a.StudentSheetId == sheetId)
                 .ToListAsync();
 
@@ -164,6 +166,7 @@ namespace business.Services
 
             // Öğrencinin Ders Sonuçlarını Al
             var examResults = await _context.ExamResults
+                .AsNoTracking()
                 .Where(r => r.StudentSheetId == sheetId)
                 .ToDictionaryAsync(r => r.ExamSectionId, r => r);
 

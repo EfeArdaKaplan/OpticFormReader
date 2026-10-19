@@ -20,10 +20,11 @@ RUN dotnet publish "WebApi.csproj" -c Release -o /app/publish /p:UseAppHost=fals
 FROM mcr.microsoft.com/dotnet/aspnet:10.0 AS runtime
 WORKDIR /app
 
-# SkiaSharp ve QuestPDF için Linux grafik font kütüphaneleri
+# SkiaSharp ve QuestPDF için Linux grafik font kütüphaneleri ve Healthcheck için curl
 RUN apt-get update && apt-get install -y --no-install-recommends \
     libfontconfig1 \
     libfreetype6 \
+    curl \
     && rm -rf /var/lib/apt/lists/*
 
 COPY --from=build /app/publish .
