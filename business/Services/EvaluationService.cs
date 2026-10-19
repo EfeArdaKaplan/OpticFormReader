@@ -235,11 +235,11 @@ namespace business.Services
                             correctAnswers.TryGetValue(q, out var correctOpt);
                             correctOpt ??= string.Empty;
 
-                            if (string.IsNullOrEmpty(selected))
+                            if (string.IsNullOrEmpty(selected) || string.IsNullOrEmpty(correctOpt))
                             {
                                 empty++;
                             }
-                            else if (!string.IsNullOrEmpty(correctOpt) && string.Equals(selected.Trim(), correctOpt.Trim(), StringComparison.OrdinalIgnoreCase))
+                            else if (string.Equals(selected.Trim(), correctOpt.Trim(), StringComparison.OrdinalIgnoreCase))
                             {
                                 correct++;
                             }

@@ -59,7 +59,6 @@ namespace business.Services
                 list.Add((bubble.Option, darkness));
             }
 
-            // 3) Kitapçık Türünü Çözümleme (A, B, C, D)
             if (questionGroups.TryGetValue((BookletSectionId, 1), out var bookletOptions))
             {
                 var detectedBooklet = ResolveBestOption(bookletOptions);
@@ -72,6 +71,11 @@ namespace business.Services
                     result.NeedsReview = true;
                     result.ReviewReason = "Kitapçık türü okunamadı veya çift kodlandı.";
                 }
+            }
+            else
+            {
+                result.NeedsReview = true;
+                result.ReviewReason = "Kitapçık alanı tespit edilemedi veya kodlanmadı.";
             }
 
             // 4) Öğrenci Numarasını Çözümleme
