@@ -22,7 +22,18 @@ namespace business.Services
             ArgumentNullException.ThrowIfNull(imageStream);
             ArgumentNullException.ThrowIfNull(layout);
 
-            using var bitmap = SKBitmap.Decode(imageStream);
+            Stream streamToDecode = imageStream;
+            MemoryStream? copyStream = null;
+            if (!imageStream.CanSeek)
+            {
+                copyStream = new MemoryStream();
+                imageStream.CopyTo(copyStream);
+                copyStream.Position = 0;
+                streamToDecode = copyStream;
+            }
+
+            using var _ = copyStream;
+            using var bitmap = SKBitmap.Decode(streamToDecode);
             if (bitmap == null)
             {
                 return new SheetOmrResult

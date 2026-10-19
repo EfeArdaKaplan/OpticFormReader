@@ -1,4 +1,4 @@
-﻿namespace core.Interfaces
+namespace core.Interfaces
 {
     public interface IFileStorage
     {
@@ -19,5 +19,11 @@
         Task DeleteAsync(
             string key,
             CancellationToken cancellationToken = default);
+
+        // İstemcinin doğrudan S3/SeaweedFS üzerinden indirme veya yükleme yapması için süreli imzalı URL üretir.
+        string GetPresignedUrl(
+            string key,
+            TimeSpan expiry,
+            bool isUpload = false);
     }
 }

@@ -1,5 +1,6 @@
 using business.Services;
 using data.Storage;
+using WebApi.Middleware;
 using QuestPDF.Infrastructure;
 using core.interfaces;
 using core.Interfaces;
@@ -130,6 +131,7 @@ using (var scope = app.Services.CreateScope())
 
 app.UseDefaultFiles();
 app.UseStaticFiles();
+app.UsePerformanceLogging();
 
 if (!app.Environment.IsEnvironment("Docker"))
 {

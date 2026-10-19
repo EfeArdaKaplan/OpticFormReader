@@ -118,6 +118,7 @@ namespace business.Services
 
             int totalSheets = sheets.Count;
             int processedCount = 0;
+            int lastBroadcastPercent = 0;
 
             // İlerleme durumunu başlat
             var progress = new EvaluationProgressDto
@@ -283,7 +284,7 @@ namespace business.Services
                     updatedSheets.Add(sheet);
                 }
 
-                // İlerlemeyi atomik artır ve SignalR ile yayınla
+                // İlerlemeyi atomik artır ve SignalR ile kontrollü (throttled) yayınla
                 int current = Interlocked.Increment(ref processedCount);
                 int pct = (int)((double)current / totalSheets * 100);
 
@@ -291,7 +292,15 @@ namespace business.Services
                 progress.Percent = pct;
                 progress.CurrentStatus = $"Okunan: {current} / {totalSheets} kağıt (%{pct})";
 
-                await BroadcastProgressAsync(progress);
+                // WebSocket buffer doyumunu önlemek için %2'lik adımlarla veya tamamlandığında yayınla
+                int last = Volatile.Read(ref lastBroadcastPercent);
+                if (current == totalSheets || pct >= last + 2)
+                {
+                    if (Interlocked.CompareExchange(ref lastBroadcastPercent, pct, last) == last || current == totalSheets)
+                    {
+                        await BroadcastProgressAsync(progress);
+                    }
+                }
             });
 
             // 4) TOPLU VERİTABANI YAZIMI (Tek Bir Hızlı Transaction)

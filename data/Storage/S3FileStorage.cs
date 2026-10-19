@@ -1,4 +1,4 @@
-﻿using Amazon.Runtime;
+using Amazon.Runtime;
 using Amazon.S3;
 using Amazon.S3.Model;
 using Amazon.S3.Util;
@@ -121,6 +121,22 @@ namespace data.Storage
         {
             await EnsureBucketAsync(cancellationToken);
             await _s3.DeleteObjectAsync(_bucketName, key, cancellationToken);
+        }
+
+        public string GetPresignedUrl(
+            string key,
+            TimeSpan expiry,
+            bool isUpload = false)
+        {
+            var request = new GetPreSignedUrlRequest
+            {
+                BucketName = _bucketName,
+                Key = key,
+                Verb = isUpload ? HttpVerb.PUT : HttpVerb.GET,
+                Expires = DateTime.UtcNow.Add(expiry)
+            };
+
+            return _s3.GetPreSignedURL(request);
         }
 
         // Bucket yoksa ilk kullanımda oluşturur.

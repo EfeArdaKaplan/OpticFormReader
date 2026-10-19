@@ -186,14 +186,33 @@ dotnet test
 
 ```text
 Toplam 1 test dosyası belirtilen desenle eşleşti.
-Başarılı! - Başarısız: 0, Başarılı: 6, Atlanan: 0, Toplam: 6, Süre: 835 ms (OpticEngine.Tests.dll)
+Başarılı! - Başarısız: 0, Başarılı: 6, Atlanan: 0, Toplam: 6, Süre: 525 ms (OpticEngine.Tests.dll)
 ```
 
 ---
 
-## 📡 REST API Özeti (Swagger / 31 Uç Nokta)
+## ⚡ Yük, Stres & Performans Testleri (k6 Load Testing)
 
-Platform, kurumsal entegrasyonlar için 8 ana modülde tam 31 adet RESTful uç nokta sunar:
+500+ optik formluk toplu yükleme, paralel değerlendirme ve WebSocket ilerleme takibi için kurumsal SLA gereksinimlerine göre hazırlanmış k6 test senaryoları:
+
+```bash
+# k6 ile yük ve stres testini çalıştırma
+k6 run tests/k6/omr-batch-load-test.js
+
+# Özel sunucu URL'si veya sınav ID'si ile çalıştırma:
+k6 run -e API_URL=http://localhost:5144 -e EXAM_ID=1 tests/k6/omr-batch-load-test.js
+```
+
+* **SLA Hedefleri:**
+  * %95 İstek Yanıt Süresi ($p_{95}$): `< 1500 ms`
+  * Hata Oranı: `< %1.0`
+  * Değerlendirme Başarı Oranı: `> %99.0`
+
+---
+
+## 📡 REST API Özeti (Swagger / 32 Uç Nokta)
+
+Platform, kurumsal entegrasyonlar için 8 ana modülde tam 32 adet RESTful uç nokta sunar:
 
 | Modül | Uç Nokta Sayısı | Açıklama |
 |---|---|---|
@@ -201,7 +220,7 @@ Platform, kurumsal entegrasyonlar için 8 ana modülde tam 31 adet RESTful uç n
 | **ExamTemplate** | 5 | Şablon CRUD, Çoklu Ders Yapılandırması ve QuestPDF Form Üretimi |
 | **Exam** | 5 | Sınav Açma, Güncelleme, Durum Takibi ve Sınav Listesi |
 | **AnswerKey** | 4 | A, B, C, D Kitapçıkları için Ders Bazlı Cevap Anahtarı Yönetimi |
-| **OpticalSheet** | 4 | SeaweedFS S3'e Tekli/Toplu Kağıt Yükleme ve Önizleme Görüntüsü Alma |
+| **OpticalSheet** | 5 | SeaweedFS S3'e Kağıt Yükleme, Önizleme ve Süreli İmzalı URL (Presigned URL) |
 | **Evaluation** | 3 | Çok Çekirdekli Paralel Değerlendirme Tetikleme ve İlerleme Takibi |
 | **Results** | 4 | Sınıf Sıralaması, A4 Öğrenci Karnesi ve Elle Öğretmen Düzeltmesi |
 | **Export** | 3 | Excel Uyumlu Dinamik UTF-8 BOM CSV ve Sonuç Dışa Aktarımı |

@@ -1,4 +1,4 @@
-﻿using core.DTOs;
+using core.DTOs;
 using core.Interfaces;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -158,6 +158,30 @@ namespace WebApi.Controllers
             catch (FileNotFoundException)
             {
                 return NotFound(new { message = "Depoda görsel dosyası bulunamadı." });
+            }
+            catch (Exception ex)
+            {
+                return BadRequest(new { message = ex.Message });
+            }
+        }
+
+        /// <summary>
+        /// S3/SeaweedFS üzerinden doğrudan yüksek hızlı erişim için süreli imzalı URL döner (Zero-RAM streaming).
+        /// </summary>
+        [HttpGet("{sheetId}/presigned-url")]
+        public async Task<IActionResult> GetPresignedUrl(int examId, int sheetId)
+        {
+            try
+            {
+                var userId = GetCurrentUserId();
+                var sheet = await _sheetService.GetSheetByIdAsync(sheetId, userId);
+                if (sheet == null || string.IsNullOrWhiteSpace(sheet.ImageKey))
+                {
+                    return NotFound(new { message = "Kağıt veya görsel bulunamadı." });
+                }
+
+                var url = _storage.GetPresignedUrl(sheet.ImageKey, TimeSpan.FromMinutes(30));
+                return Ok(new { url, expiresMinutes = 30 });
             }
             catch (Exception ex)
             {
