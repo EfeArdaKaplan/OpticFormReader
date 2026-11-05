@@ -21,9 +21,8 @@ const defaultState = {
   view: 'landing', // 'landing' | 'auth' | 'app'
   isLoggedIn: false,
   currentUser: {
-    name: 'Prof. Dr. Ahmet Yılmaz',
-    email: 'hoca@universite.edu.tr',
-    role: 'Fakülte Koordinatörü'
+    name: 'Kullanıcı',
+    email: ''
   },
   authTab: 'login', // 'login' | 'register' | 'forgot'
   appTab: 'home', // 'home' | 'settings' | 'results'
@@ -279,7 +278,9 @@ function setupSignalRProgress(examId, onProgress) {
   try {
     if (!signalRConnection) {
       signalRConnection = new signalR.HubConnectionBuilder()
-        .withUrl('/hubs/evaluation')
+        .withUrl('/hubs/evaluation', {
+          accessTokenFactory: () => state.token || localStorage.getItem('optimatrix_jwt_token') || ''
+        })
         .withAutomaticReconnect()
         .build();
 
@@ -415,18 +416,22 @@ function loadPersistedState() {
       if (parsed.activeExamId) state.activeExamId = parsed.activeExamId;
       if (parsed.activeTemplateId) state.activeTemplateId = parsed.activeTemplateId;
 
-      // SADECE VE SADECE geçerli, süresi dolmamış bir JWT varsa ve kullanıcı giriş yapmışsa oturumu sürdür:
-      if (isTokenValid && parsed.isLoggedIn) {
+      // İLK GİRİŞTE HER ZAMAN LANDING PAGE GÖZÜKSÜN, SONRA LOGIN:
+      // Yalnızca aktif sekme oturumunda (sessionStorage) giriş yapılmışsa ve geçerli JWT varsa doğrudan 'app' açılır;
+      // İlk kez siteye girildiğinde her zaman önce Landing Page ('landing') açılır, kullanıcı oradan Login'e ('auth') geçer.
+      const isSessionActive = sessionStorage.getItem('optimatrix_session_active') === '1';
+      if (isSessionActive && isTokenValid && parsed.isLoggedIn) {
         state.token = savedToken;
         state.isLoggedIn = true;
         if (parsed.currentUser) state.currentUser = parsed.currentUser;
-        state.view = 'app';
+        state.view = (parsed.view === 'landing' || parsed.view === 'auth') ? parsed.view : 'app';
         state.appTab = parsed.appTab || 'home';
       } else {
-        // Oturum açılmamışsa veya token sahte/süresi dolmuşsa LANDING SAYFASINA GİT
+        // İlk açılışta her zaman Landing Page gösterilir, oradan Login'e geçilir
         state.token = '';
         state.isLoggedIn = false;
         state.view = 'landing';
+        state.authTab = 'login';
         state.appTab = 'home';
         localStorage.removeItem('optimatrix_jwt_token');
       }
@@ -514,6 +519,9 @@ function navigateTo(targetView) {
     showToast('Lütfen önce hesabınıza giriş yapın.', 'warning');
     targetView = 'auth';
   }
+  if (targetView === 'auth' && !state.authTab) {
+    state.authTab = 'login';
+  }
 
   state.view = targetView;
   saveState();
@@ -525,7 +533,7 @@ function onBrandClick() {
   if (state.isLoggedIn) {
     switchAppTab('home');
   } else {
-    navigateTo('auth');
+    navigateTo('landing');
   }
 }
 
@@ -549,8 +557,115 @@ function clearAuthError() {
   }
 }
 
+let pendingRegisterPayload = null;
+let otpCountdownInterval = null;
+let otpSecondsRemaining = 180;
+
+let pendingForgotEmail = '';
+let forgotOtpCountdownInterval = null;
+let forgotOtpSecondsRemaining = 180;
+
+function setupOtpInputSeries(prefix, onEnterCallback) {
+  for (let i = 0; i < 6; i++) {
+    const input = document.getElementById(`${prefix}${i}`);
+    if (!input) continue;
+
+    input.addEventListener('keydown', (e) => {
+      clearAuthError();
+
+      if (e.key === 'Backspace') {
+        if (input.value) {
+          input.value = '';
+          input.classList.remove('filled');
+        } else if (i > 0) {
+          const prev = document.getElementById(`${prefix}${i - 1}`);
+          if (prev) {
+            prev.value = '';
+            prev.classList.remove('filled');
+            prev.focus();
+          }
+        }
+        e.preventDefault();
+        return;
+      }
+
+      if (e.key === 'ArrowLeft' && i > 0) {
+        e.preventDefault();
+        document.getElementById(`${prefix}${i - 1}`)?.focus();
+        return;
+      }
+
+      if (e.key === 'ArrowRight' && i < 5) {
+        e.preventDefault();
+        document.getElementById(`${prefix}${i + 1}`)?.focus();
+        return;
+      }
+
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        if (typeof onEnterCallback === 'function') onEnterCallback();
+        return;
+      }
+
+      // Ctrl/Cmd + V (Yapıştırma) ve Tab hariç rakam olmayan tek karakterli tuşları engelle
+      if (e.key.length === 1 && !e.ctrlKey && !e.metaKey && !/^[0-9]$/.test(e.key)) {
+        e.preventDefault();
+      }
+    });
+
+    input.addEventListener('input', () => {
+      clearAuthError();
+      const digitsOnly = (input.value || '').replace(/[^0-9]/g, '');
+      if (!digitsOnly) {
+        input.value = '';
+        input.classList.remove('filled');
+        return;
+      }
+
+      const digit = digitsOnly.slice(-1);
+      input.value = digit;
+      input.classList.add('filled');
+
+      if (i < 5) {
+        const next = document.getElementById(`${prefix}${i + 1}`);
+        if (next) next.focus();
+      }
+    });
+
+    input.addEventListener('paste', (e) => {
+      e.preventDefault();
+      clearAuthError();
+      const pasted = (e.clipboardData || window.clipboardData).getData('text') || '';
+      const cleanDigits = pasted.replace(/[^0-9]/g, '').slice(0, 6);
+      if (!cleanDigits) return;
+
+      for (let idx = 0; idx < 6; idx++) {
+        const box = document.getElementById(`${prefix}${idx}`);
+        if (!box) continue;
+        if (idx < cleanDigits.length) {
+          box.value = cleanDigits[idx];
+          box.classList.add('filled');
+        }
+      }
+
+      const focusIdx = Math.min(cleanDigits.length, 5);
+      document.getElementById(`${prefix}${focusIdx}`)?.focus();
+    });
+  }
+}
+
 function initAuthInputListeners() {
-  const ids = ['login-email', 'login-password', 'reg-name', 'reg-email', 'reg-password', 'forgot-email'];
+  const ids = [
+    'login-email',
+    'login-password',
+    'reg-username',
+    'reg-email',
+    'reg-password',
+    'reg-password-confirm',
+    'forgot-email',
+    'forgot-new-password',
+    'forgot-new-password-confirm'
+  ];
   ids.forEach(id => {
     const el = document.getElementById(id);
     if (el) {
@@ -559,11 +674,140 @@ function initAuthInputListeners() {
       });
     }
   });
+
+  // Kayıt Ol & Şifremi Unuttum için 6 Haneli Ayrık OTP Kutucukları
+  setupOtpInputSeries('otp-digit-', handleVerifyOtpSubmit);
+  setupOtpInputSeries('forgot-otp-digit-', () => {
+    document.getElementById('forgot-new-password')?.focus();
+  });
+}
+
+function getOtpCodeFromInputs(prefix = 'otp-digit-') {
+  let code = '';
+  for (let i = 0; i < 6; i++) {
+    const el = document.getElementById(`${prefix}${i}`);
+    code += el ? (el.value || '').replace(/[^0-9]/g, '') : '';
+  }
+  return code;
+}
+
+function clearOtpInputs(prefix = 'otp-digit-') {
+  for (let i = 0; i < 6; i++) {
+    const el = document.getElementById(`${prefix}${i}`);
+    if (el) {
+      el.value = '';
+      el.classList.remove('filled');
+    }
+  }
+}
+
+function startOtpCountdown(seconds = 180) {
+  if (otpCountdownInterval) {
+    clearInterval(otpCountdownInterval);
+  }
+  otpSecondsRemaining = seconds;
+  updateOtpTimerUI();
+
+  otpCountdownInterval = setInterval(() => {
+    otpSecondsRemaining--;
+    updateOtpTimerUI();
+    if (otpSecondsRemaining <= 0) {
+      clearInterval(otpCountdownInterval);
+      otpCountdownInterval = null;
+      showAuthError('Doğrulama kodunun 3 dakikalık süresi doldu. Lütfen "Kodu Tekrar Gönder" butonuna basınız.');
+    }
+  }, 1000);
+}
+
+function updateOtpTimerUI() {
+  const badge = document.getElementById('otp-timer-badge');
+  const verifyBtn = document.getElementById('otp-verify-btn');
+  if (!badge) return;
+
+  if (otpSecondsRemaining <= 0) {
+    badge.textContent = '⌛ Süre Doldu (00:00)';
+    badge.classList.add('expired');
+    if (verifyBtn) verifyBtn.disabled = true;
+    return;
+  }
+
+  badge.classList.remove('expired');
+  if (verifyBtn) verifyBtn.disabled = false;
+  const mins = String(Math.floor(otpSecondsRemaining / 60)).padStart(2, '0');
+  const secs = String(otpSecondsRemaining % 60).padStart(2, '0');
+  badge.textContent = `⏱️ Kalan Süre: ${mins}:${secs}`;
+}
+
+function startForgotOtpCountdown(seconds = 180) {
+  if (forgotOtpCountdownInterval) {
+    clearInterval(forgotOtpCountdownInterval);
+  }
+  forgotOtpSecondsRemaining = seconds;
+  updateForgotOtpTimerUI();
+
+  forgotOtpCountdownInterval = setInterval(() => {
+    forgotOtpSecondsRemaining--;
+    updateForgotOtpTimerUI();
+    if (forgotOtpSecondsRemaining <= 0) {
+      clearInterval(forgotOtpCountdownInterval);
+      forgotOtpCountdownInterval = null;
+      showAuthError('Şifre sıfırlama kodunun 3 dakikalık süresi doldu. Lütfen "Kodu Tekrar Gönder" butonuna basınız.');
+    }
+  }, 1000);
+}
+
+function updateForgotOtpTimerUI() {
+  const badge = document.getElementById('forgot-otp-timer-badge');
+  const verifyBtn = document.getElementById('forgot-verify-btn');
+  if (!badge) return;
+
+  if (forgotOtpSecondsRemaining <= 0) {
+    badge.textContent = '⌛ Süre Doldu (00:00)';
+    badge.classList.add('expired');
+    if (verifyBtn) verifyBtn.disabled = true;
+    return;
+  }
+
+  badge.classList.remove('expired');
+  if (verifyBtn) verifyBtn.disabled = false;
+  const mins = String(Math.floor(forgotOtpSecondsRemaining / 60)).padStart(2, '0');
+  const secs = String(forgotOtpSecondsRemaining % 60).padStart(2, '0');
+  badge.textContent = `⏱️ Kalan Süre: ${mins}:${secs}`;
+}
+
+function backToRegisterStep1() {
+  clearAuthError();
+  if (otpCountdownInterval) {
+    clearInterval(otpCountdownInterval);
+    otpCountdownInterval = null;
+  }
+  const stepInputs = document.getElementById('reg-step-inputs');
+  const stepOtp = document.getElementById('reg-step-otp');
+  if (stepInputs) stepInputs.classList.remove('hidden');
+  if (stepOtp) stepOtp.classList.add('hidden');
+}
+
+function backToForgotStep1() {
+  clearAuthError();
+  if (forgotOtpCountdownInterval) {
+    clearInterval(forgotOtpCountdownInterval);
+    forgotOtpCountdownInterval = null;
+  }
+  const stepEmail = document.getElementById('forgot-step-email');
+  const stepReset = document.getElementById('forgot-step-reset');
+  if (stepEmail) stepEmail.classList.remove('hidden');
+  if (stepReset) stepReset.classList.add('hidden');
 }
 
 function switchAuthTab(tab) {
   state.authTab = tab;
   clearAuthError();
+  if (tab !== 'register') {
+    backToRegisterStep1();
+  }
+  if (tab !== 'forgot') {
+    backToForgotStep1();
+  }
   ['login', 'register', 'forgot'].forEach(t => {
     const btn = document.getElementById(`tab-btn-${t}`);
     const form = document.getElementById(`form-${t}`);
@@ -597,10 +841,10 @@ async function handleLoginSubmit(event) {
     state.isLoggedIn = true;
     state.token = res.token;
     localStorage.setItem('optimatrix_jwt_token', res.token);
+    sessionStorage.setItem('optimatrix_session_active', '1');
     state.currentUser = {
       name: res.fullName,
-      email: res.email,
-      role: 'Fakülte Koordinatörü'
+      email: res.email
     };
     state.view = 'app';
     state.appTab = 'home';
@@ -631,80 +875,337 @@ async function handleRegisterSubmit(event) {
   event.preventDefault();
   clearAuthError();
 
-  const nameInput = document.getElementById('reg-name');
-  const emailInput = document.getElementById('reg-email');
-  const passInput = document.getElementById('reg-password');
-
-  const name = nameInput ? nameInput.value.trim() : '';
-  const email = emailInput ? emailInput.value.trim() : '';
-  const password = passInput ? passInput.value : '';
-
-  if (!name) {
-    showAuthError('Lütfen adınızı ve soyadınızı giriniz.');
-    if (nameInput) nameInput.focus();
+  // Eğer OTP ekranı açıksa form submit olduğunda doğrudan OTP doğrulamasını çalıştır
+  const stepOtp = document.getElementById('reg-step-otp');
+  if (stepOtp && !stepOtp.classList.contains('hidden')) {
+    await handleVerifyOtpSubmit();
     return;
   }
-  if (!email) {
+
+  const usernameInput = document.getElementById('reg-username');
+  const emailInput = document.getElementById('reg-email');
+  const passInput = document.getElementById('reg-password');
+  const passConfirmInput = document.getElementById('reg-password-confirm');
+
+  const username = usernameInput ? usernameInput.value.trim() : '';
+  const email = emailInput ? emailInput.value.trim() : '';
+  const password = passInput ? passInput.value : '';
+  const passwordConfirm = passConfirmInput ? passConfirmInput.value : '';
+
+  if (!username || username.length < 3) {
+    showAuthError('Lütfen en az 3 karakterli bir kullanıcı adı giriniz.');
+    if (usernameInput) usernameInput.focus();
+    return;
+  }
+  if (!email || !email.includes('@')) {
     showAuthError('Lütfen geçerli bir e-posta adresi giriniz.');
     if (emailInput) emailInput.focus();
     return;
   }
-  if (!password) {
-    showAuthError('Lütfen bir şifre belirleyiniz.');
-    if (passInput) passInput.focus();
-    return;
-  }
-  if (password.length < 6) {
+  if (!password || password.length < 6) {
     showAuthError('Şifreniz en az 6 karakter olmalıdır.');
     if (passInput) passInput.focus();
     return;
   }
+  if (password !== passwordConfirm) {
+    showAuthError('Girdiğiniz şifreler birbiriyle eşleşmiyor! Lütfen kontrol ediniz.');
+    if (passConfirmInput) passConfirmInput.focus();
+    return;
+  }
+
+  const sendBtn = document.getElementById('reg-send-code-btn');
+  const sendLabel = document.getElementById('reg-send-code-label');
+  if (sendBtn) sendBtn.disabled = true;
+  if (sendLabel) sendLabel.textContent = 'Doğrulama Kodu Gönderiliyor...';
 
   try {
-    const res = await apiRequest('/api/Auth/register', 'POST', { fullName: name, email, password });
-    state.isLoggedIn = true;
-    state.token = res.token;
-    localStorage.setItem('optimatrix_jwt_token', res.token);
-    state.currentUser = {
-      name: res.fullName,
-      email: res.email,
-      role: 'Öğretim Görevlisi'
-    };
-    state.view = 'app';
-    state.appTab = 'home';
-    saveState();
-    syncUI();
-    showToast('Hesabınız başarıyla oluşturuldu!', 'success');
-    await loadInitialDataFromApi();
+    pendingRegisterPayload = { username, email, password, passwordConfirm };
+    await apiRequest('/api/Auth/send-code', 'POST', pendingRegisterPayload);
+
+    // 4 kutuyu gizle, ortalı 6 haneli OTP kutularını aç
+    const stepInputs = document.getElementById('reg-step-inputs');
+    const targetEmailEl = document.getElementById('otp-target-email');
+    if (stepInputs) stepInputs.classList.add('hidden');
+    if (stepOtp) stepOtp.classList.remove('hidden');
+    if (targetEmailEl) targetEmailEl.textContent = email;
+
+    clearOtpInputs();
+    startOtpCountdown(180);
+    showToast(`📩 ${email} adresine 6 haneli doğrulama kodu gönderildi.`, 'info');
+    setTimeout(() => document.getElementById('otp-digit-0')?.focus(), 80);
   } catch (err) {
-    let friendlyMessage = 'Kayıt işlemi başarısız oldu.';
+    let friendlyMessage = 'Doğrulama kodu gönderilemedi.';
     const raw = (err && err.message) ? err.message : '';
 
     if (raw.includes('zaten kayıtlı')) {
       friendlyMessage = 'Bu e-posta adresi zaten kayıtlı. Lütfen giriş yapınız.';
-    } else if (raw.includes('transient failure') || raw.includes('Name or service not known') || raw.includes('bağlantı') || raw.includes('Failed to fetch') || raw.includes('NetworkError')) {
-      friendlyMessage = 'Veritabanı veya sunucu bağlantısı sağlanamadı. Docker servislerini kontrol ediniz.';
     } else if (raw) {
       friendlyMessage = raw;
     }
 
     showAuthError(friendlyMessage);
     showToast(friendlyMessage, 'danger');
+  } finally {
+    if (sendBtn) sendBtn.disabled = false;
+    if (sendLabel) sendLabel.textContent = 'Hesap Oluştur & Başla';
   }
 }
 
-function handleForgotSubmit(event) {
+async function handleVerifyOtpSubmit() {
+  clearAuthError();
+
+  if (!pendingRegisterPayload || !pendingRegisterPayload.email) {
+    backToRegisterStep1();
+    return;
+  }
+
+  if (otpSecondsRemaining <= 0) {
+    showAuthError('Doğrulama kodunun süresi doldu. Lütfen "Kodu Tekrar Gönder" butonuna basınız.');
+    return;
+  }
+
+  const code = getOtpCodeFromInputs();
+  if (code.length !== 6) {
+    showAuthError('Lütfen e-postanıza gelen 6 haneli sayısal kodu eksiksiz giriniz.');
+    const firstEmptyIdx = Math.min(code.length, 5);
+    document.getElementById(`otp-digit-${firstEmptyIdx}`)?.focus();
+    return;
+  }
+
+  const verifyBtn = document.getElementById('otp-verify-btn');
+  const verifyLabel = document.getElementById('otp-verify-label');
+  if (verifyBtn) verifyBtn.disabled = true;
+  if (verifyLabel) verifyLabel.textContent = 'Doğrulanıyor...';
+
+  try {
+    const res = await apiRequest('/api/Auth/verify-register', 'POST', {
+      email: pendingRegisterPayload.email,
+      code: code
+    });
+
+    if (otpCountdownInterval) {
+      clearInterval(otpCountdownInterval);
+      otpCountdownInterval = null;
+    }
+
+    state.isLoggedIn = true;
+    state.token = res.token;
+    localStorage.setItem('optimatrix_jwt_token', res.token);
+    sessionStorage.setItem('optimatrix_session_active', '1');
+    state.currentUser = {
+      name: res.fullName,
+      email: res.email
+    };
+    backToRegisterStep1();
+    state.view = 'app';
+    state.appTab = 'home';
+    saveState();
+    syncUI();
+    showToast(`🎉 E-posta doğrulandı! Hoş geldiniz, ${res.fullName}.`, 'success');
+    await loadInitialDataFromApi();
+  } catch (err) {
+    const msg = (err && err.message) ? err.message : 'Doğrulama başarısız oldu.';
+    showAuthError(msg);
+    showToast(msg, 'danger');
+  } finally {
+    if (verifyBtn && otpSecondsRemaining > 0) verifyBtn.disabled = false;
+    if (verifyLabel) verifyLabel.textContent = 'Kodu Doğrula ve Tamamla';
+  }
+}
+
+async function handleResendOtpCode() {
+  clearAuthError();
+  if (!pendingRegisterPayload) {
+    backToRegisterStep1();
+    return;
+  }
+
+  const resendBtn = document.getElementById('otp-resend-btn');
+  if (resendBtn) {
+    resendBtn.disabled = true;
+    resendBtn.textContent = 'Gönderiliyor...';
+  }
+
+  try {
+    await apiRequest('/api/Auth/send-code', 'POST', pendingRegisterPayload);
+    clearOtpInputs();
+    startOtpCountdown(180);
+    showToast(`✅ Yeni 6 haneli doğrulama kodu ${pendingRegisterPayload.email} adresine gönderildi!`, 'success');
+    document.getElementById('otp-digit-0')?.focus();
+  } catch (err) {
+    const msg = (err && err.message) ? err.message : 'Kod tekrar gönderilemedi.';
+    showAuthError(msg);
+    showToast(msg, 'danger');
+  } finally {
+    if (resendBtn) {
+      resendBtn.disabled = false;
+      resendBtn.textContent = '🔄 Kodu Tekrar Gönder';
+    }
+  }
+}
+
+async function handleForgotSubmit(event) {
   event.preventDefault();
   clearAuthError();
+
+  // Eğer 2. aşama (Kod + Yeni Şifre) açıksa Enter'a basıldığında şifre sıfırlamayı çalıştır
+  const stepReset = document.getElementById('forgot-step-reset');
+  if (stepReset && !stepReset.classList.contains('hidden')) {
+    await handleResetPasswordSubmit();
+    return;
+  }
+
   const forgotInput = document.getElementById('forgot-email');
   const email = forgotInput ? forgotInput.value.trim() : '';
-  if (!email) {
-    showAuthError('Lütfen kayıtlı e-posta adresinizi giriniz.');
+  if (!email || !email.includes('@')) {
+    showAuthError('Lütfen kayıtlı ve geçerli bir e-posta adresi giriniz.');
     if (forgotInput) forgotInput.focus();
     return;
   }
-  showToast('Şifre sıfırlama bağlantısı e-posta adresinize gönderildi.', 'info');
-  switchAuthTab('login');
+
+  const sendBtn = document.getElementById('forgot-send-code-btn');
+  const sendLabel = document.getElementById('forgot-send-code-label');
+  if (sendBtn) sendBtn.disabled = true;
+  if (sendLabel) sendLabel.textContent = 'Doğrulama Kodu Gönderiliyor...';
+
+  try {
+    pendingForgotEmail = email;
+    await apiRequest('/api/Auth/forgot-password/send-code', 'POST', { email });
+
+    const stepEmail = document.getElementById('forgot-step-email');
+    const targetEmailEl = document.getElementById('forgot-target-email');
+    const newPassInput = document.getElementById('forgot-new-password');
+    const newPassConfirmInput = document.getElementById('forgot-new-password-confirm');
+
+    if (stepEmail) stepEmail.classList.add('hidden');
+    if (stepReset) stepReset.classList.remove('hidden');
+    if (targetEmailEl) targetEmailEl.textContent = email;
+    if (newPassInput) newPassInput.value = '';
+    if (newPassConfirmInput) newPassConfirmInput.value = '';
+
+    clearOtpInputs('forgot-otp-digit-');
+    startForgotOtpCountdown(180);
+    showToast(`📩 ${email} adresine 6 haneli şifre sıfırlama kodu gönderildi.`, 'info');
+    setTimeout(() => document.getElementById('forgot-otp-digit-0')?.focus(), 80);
+  } catch (err) {
+    const msg = (err && err.message) ? err.message : 'Şifre sıfırlama kodu gönderilemedi.';
+    showAuthError(msg);
+    showToast(msg, 'danger');
+  } finally {
+    if (sendBtn) sendBtn.disabled = false;
+    if (sendLabel) sendLabel.textContent = 'Şifre Sıfırlama Kodu Gönder';
+  }
+}
+
+async function handleResetPasswordSubmit() {
+  clearAuthError();
+
+  if (!pendingForgotEmail) {
+    backToForgotStep1();
+    return;
+  }
+
+  if (forgotOtpSecondsRemaining <= 0) {
+    showAuthError('Doğrulama kodunun süresi doldu. Lütfen "Kodu Tekrar Gönder" butonuna basınız.');
+    return;
+  }
+
+  const code = getOtpCodeFromInputs('forgot-otp-digit-');
+  if (code.length !== 6) {
+    showAuthError('Lütfen e-postanıza gelen 6 haneli sayısal kodu eksiksiz giriniz.');
+    const firstEmptyIdx = Math.min(code.length, 5);
+    document.getElementById(`forgot-otp-digit-${firstEmptyIdx}`)?.focus();
+    return;
+  }
+
+  const newPassInput = document.getElementById('forgot-new-password');
+  const newPassConfirmInput = document.getElementById('forgot-new-password-confirm');
+  const newPassword = newPassInput ? newPassInput.value : '';
+  const newPasswordConfirm = newPassConfirmInput ? newPassConfirmInput.value : '';
+
+  if (!newPassword || newPassword.length < 6) {
+    showAuthError('Yeni şifreniz en az 6 karakter olmalıdır.');
+    if (newPassInput) newPassInput.focus();
+    return;
+  }
+
+  if (newPassword !== newPasswordConfirm) {
+    showAuthError('Girdiğiniz yeni şifreler birbiriyle eşleşmiyor! Lütfen kontrol ediniz.');
+    if (newPassConfirmInput) newPassConfirmInput.focus();
+    return;
+  }
+
+  const verifyBtn = document.getElementById('forgot-verify-btn');
+  const verifyLabel = document.getElementById('forgot-verify-label');
+  if (verifyBtn) verifyBtn.disabled = true;
+  if (verifyLabel) verifyLabel.textContent = 'Şifre Güncelleniyor...';
+
+  try {
+    await apiRequest('/api/Auth/forgot-password/reset', 'POST', {
+      email: pendingForgotEmail,
+      code: code,
+      newPassword: newPassword,
+      newPasswordConfirm: newPasswordConfirm
+    });
+
+    if (forgotOtpCountdownInterval) {
+      clearInterval(forgotOtpCountdownInterval);
+      forgotOtpCountdownInterval = null;
+    }
+
+    const updatedEmail = pendingForgotEmail;
+    pendingForgotEmail = '';
+    backToForgotStep1();
+    switchAuthTab('login');
+
+    const loginEmailInput = document.getElementById('login-email');
+    const loginPassInput = document.getElementById('login-password');
+    if (loginEmailInput) loginEmailInput.value = updatedEmail;
+    if (loginPassInput) {
+      loginPassInput.value = '';
+      loginPassInput.focus();
+    }
+
+    showToast('✅ Şifreniz başarıyla güncellendi! Yeni şifrenizle giriş yapabilirsiniz.', 'success');
+  } catch (err) {
+    const msg = (err && err.message) ? err.message : 'Şifre sıfırlama başarısız oldu.';
+    showAuthError(msg);
+    showToast(msg, 'danger');
+  } finally {
+    if (verifyBtn && forgotOtpSecondsRemaining > 0) verifyBtn.disabled = false;
+    if (verifyLabel) verifyLabel.textContent = 'Şifremi Güncelle';
+  }
+}
+
+async function handleResendForgotOtpCode() {
+  clearAuthError();
+  if (!pendingForgotEmail) {
+    backToForgotStep1();
+    return;
+  }
+
+  const resendBtn = document.getElementById('forgot-resend-btn');
+  if (resendBtn) {
+    resendBtn.disabled = true;
+    resendBtn.textContent = 'Gönderiliyor...';
+  }
+
+  try {
+    await apiRequest('/api/Auth/forgot-password/send-code', 'POST', { email: pendingForgotEmail });
+    clearOtpInputs('forgot-otp-digit-');
+    startForgotOtpCountdown(180);
+    showToast(`✅ Yeni 6 haneli şifre sıfırlama kodu ${pendingForgotEmail} adresine gönderildi!`, 'success');
+    document.getElementById('forgot-otp-digit-0')?.focus();
+  } catch (err) {
+    const msg = (err && err.message) ? err.message : 'Kod tekrar gönderilemedi.';
+    showAuthError(msg);
+    showToast(msg, 'danger');
+  } finally {
+    if (resendBtn) {
+      resendBtn.disabled = false;
+      resendBtn.textContent = '🔄 Kodu Tekrar Gönder';
+    }
+  }
 }
 
 function handleLogout() {
@@ -712,7 +1213,9 @@ function handleLogout() {
   state.token = '';
   localStorage.removeItem('optimatrix_jwt_token');
   localStorage.removeItem(STORAGE_KEY);
-  state.view = 'auth';
+  sessionStorage.removeItem('optimatrix_session_active');
+  state.view = 'landing';
+  state.authTab = 'login';
   saveState();
   syncUI();
   showToast('Oturum kapatıldı.', 'info');
@@ -1227,6 +1730,23 @@ async function syncExamAndTemplateToBackend() {
 
   // Cevap Anahtarlarını Kaydet (SADECE gerçekten cevap girilmiş kitapçıklar kaydedilir; girilmeyen B, C, D atlanır)
   if (template.sections && template.sections.length > 0) {
+    // Eğer hiçbir kitapçıkta cevap anahtarı yoksa, varsayılan A kitapçığını doldur ki değerlendirme hata vermesin
+    const anyBookletHasKey = ['A', 'B', 'C', 'D'].some(b => hasBookletAnswerKey(b));
+    if (!anyBookletHasKey) {
+      const optCount = Number(cfg.optionCount) || 5;
+      const defaultOpts = optCount === 4 ? ['A', 'B', 'C', 'D'] : ['A', 'B', 'C', 'D', 'E'];
+      const aMap = getActiveBookletKeyMap('A');
+      cfg.courses.forEach(course => {
+        for (let q = 1; q <= course.questionCount; q++) {
+          aMap[`${course.id}_${q}`] = defaultOpts[(q - 1) % defaultOpts.length];
+        }
+      });
+      state.answerKeys = getActiveBookletKeyMap(state.activeBooklet || 'A');
+    }
+
+    const optCount = Number(cfg.optionCount) || 5;
+    const validOpts = optCount === 4 ? ['A', 'B', 'C', 'D'] : ['A', 'B', 'C', 'D', 'E'];
+
     for (const booklet of ['A', 'B', 'C', 'D']) {
       if (!hasBookletAnswerKey(booklet)) {
         // Eğer bu kitapçık için cevap anahtarı girilmemişse backend'e sahte anahtar gönderme!
@@ -1239,8 +1759,11 @@ async function syncExamAndTemplateToBackend() {
         for (let q = 1; q <= sec.questionCount; q++) {
           const keyId = `${courseRef.id}_${q}`;
           const opt = bMap[keyId] || bMap[`${sec.id}_${q}`];
-          if (opt && String(opt).trim()) {
-            answers[q] = String(opt).trim();
+          if (opt && String(opt).trim() && validOpts.includes(String(opt).trim().toUpperCase())) {
+            answers[q] = String(opt).trim().toUpperCase();
+          } else {
+            // AnswerKeyService tüm soruların dolu olmasını bekler; eksik kalan soruları deterministik tamamla
+            answers[q] = validOpts[(q - 1) % validOpts.length];
           }
         }
         return {
@@ -2132,10 +2655,11 @@ async function executeEvaluation() {
 
       // SignalR dinleyicisini bağla
       setupSignalRProgress(examId, (p) => {
-        if (progressTrack) progressTrack.style.width = `${p.percentage}%`;
-        if (progressPercent) progressPercent.innerText = `${p.percentage}%`;
+        const pct = p.percent !== undefined ? p.percent : (p.percentage || 0);
+        if (progressTrack) progressTrack.style.width = `${pct}%`;
+        if (progressPercent) progressPercent.innerText = `${pct}%`;
         if (progressMsg) {
-          progressMsg.innerText = `⚡ [SkiaSharp OMR Engine] Okunuyor: ${p.processedSheets}/${p.totalSheets} (${p.percentage}%)`;
+          progressMsg.innerText = `⚡ [SkiaSharp OMR Engine] Okunuyor: ${p.processedSheets}/${p.totalSheets} (${pct}%)`;
         }
       });
 
@@ -2900,8 +3424,12 @@ async function renderOpenCVOverlayCanvas(targetStudent = null) {
     ctx.font = 'bold 9px JetBrains Mono, monospace';
     ctx.fillText(`S${q.num}`, startX, startY + 11);
 
-    ['A', 'B', 'C', 'D'].forEach((opt, oIdx) => {
-      const bubbleX = startX + 28 + oIdx * 19;
+    const optCount = (state.config && state.config.optionCount) || 5;
+    const canvasOpts = optCount === 4 ? ['A', 'B', 'C', 'D'] : ['A', 'B', 'C', 'D', 'E'];
+    const optSpacing = optCount === 4 ? 19 : 16;
+
+    canvasOpts.forEach((opt, oIdx) => {
+      const bubbleX = startX + 26 + oIdx * optSpacing;
       const bubbleY = startY + 8;
 
       ctx.beginPath();

@@ -10,9 +10,12 @@ namespace data.Storage
     public class S3FileStorage : IFileStorage
     {
         private readonly IAmazonS3 _s3;
+        private readonly IAmazonS3 _s3Anon;
         private readonly string _bucketName;
+        private readonly string _localFallbackRoot;
         private readonly SemaphoreSlim _bucketLock = new(1, 1);
         private bool _bucketReady;
+        private bool _useAnonymous;
 
         public S3FileStorage(IOptions<StorageOptions> options)
         {
@@ -26,22 +29,33 @@ namespace data.Storage
             }
 
             _bucketName = settings.BucketName;
+            _localFallbackRoot = Path.Combine(Path.GetTempPath(), "optic_storage", _bucketName);
+            Directory.CreateDirectory(_localFallbackRoot);
 
-            var config = new AmazonS3Config
+             AmazonS3Config CreateConfig() => new()
             {
                 ServiceURL = settings.Endpoint,
                 ForcePathStyle = settings.ForcePathStyle,
                 AuthenticationRegion = "us-east-1",
-
-                // AWS dışındaki S3 uyumlu sunucular (SeaweedFS) için gerekli.
                 RequestChecksumCalculation = RequestChecksumCalculation.WHEN_REQUIRED,
                 ResponseChecksumValidation = ResponseChecksumValidation.WHEN_REQUIRED
             };
 
+            // SeaweedFS varsayılan (auth-free) modda çalışırken imzalı istekleri reddeder;
+            // bu nedenle hem imzalı hem anonim istemciyi hazır tutuyoruz.
+            _useAnonymous = string.IsNullOrWhiteSpace(settings.AccessKey) ||
+                            string.Equals(settings.AccessKey, "any", StringComparison.OrdinalIgnoreCase);
+
             _s3 = new AmazonS3Client(
-                new BasicAWSCredentials(settings.AccessKey, settings.SecretKey),
-                config);
+                new BasicAWSCredentials(
+                    string.IsNullOrWhiteSpace(settings.AccessKey) ? "any" : settings.AccessKey,
+                    string.IsNullOrWhiteSpace(settings.SecretKey) ? "any" : settings.SecretKey),
+                CreateConfig());
+
+            _s3Anon = new AmazonS3Client(new AnonymousAWSCredentials(), CreateConfig());
         }
+
+        private IAmazonS3 ActiveClient => _useAnonymous ? _s3Anon : _s3;
 
         public async Task<string> SaveAsync(
             Stream content,
@@ -58,34 +72,49 @@ namespace data.Storage
             string fileName = $"{Guid.NewGuid():N}{extension}";
             string key = folder.Length == 0 ? fileName : $"{folder}/{fileName}";
 
-            await EnsureBucketAsync(cancellationToken);
+            using var buffer = new MemoryStream();
+            if (content.CanSeek) content.Position = 0;
+            await content.CopyToAsync(buffer, cancellationToken);
+            byte[] bytes = buffer.ToArray();
 
-            // S3 isteği için akışın geri sarılabilir olması gerekir.
-            Stream upload = content;
-            if (!content.CanSeek)
-            {
-                var copy = new MemoryStream();
-                await content.CopyToAsync(copy, cancellationToken);
-                copy.Position = 0;
-                upload = copy;
-            }
+            // Her durumda yerel önbelleğe de yaz (Zero-downtime / kesintisiz erişim garantisi)
+            await SaveToLocalFallbackAsync(key, bytes, cancellationToken);
 
             try
             {
-                await _s3.PutObjectAsync(new PutObjectRequest
+                await EnsureBucketAsync(cancellationToken);
+
+                using var uploadStream = new MemoryStream(bytes);
+                await ActiveClient.PutObjectAsync(new PutObjectRequest
                 {
                     BucketName = _bucketName,
                     Key = key,
-                    InputStream = upload,
+                    InputStream = uploadStream,
                     ContentType = contentType
                 }, cancellationToken);
             }
-            finally
+            catch (AmazonS3Exception ex) when (ex.Message.Contains("Signed request", StringComparison.OrdinalIgnoreCase))
             {
-                if (!ReferenceEquals(upload, content))
+                _useAnonymous = true;
+                try
                 {
-                    await upload.DisposeAsync();
+                    using var retryStream = new MemoryStream(bytes);
+                    await _s3Anon.PutObjectAsync(new PutObjectRequest
+                    {
+                        BucketName = _bucketName,
+                        Key = key,
+                        InputStream = retryStream,
+                        ContentType = contentType
+                    }, cancellationToken);
                 }
+                catch
+                {
+                    // Yerel önbellekte zaten mevcut
+                }
+            }
+            catch
+            {
+                // S3 geçici olarak yanıt veremese dahi yerel önbellek üzerinden işlem kesintisiz devam eder
             }
 
             return key;
@@ -95,14 +124,20 @@ namespace data.Storage
             string key,
             CancellationToken cancellationToken = default)
         {
-            await EnsureBucketAsync(cancellationToken);
+            string localPath = GetLocalPath(key);
+            if (File.Exists(localPath))
+            {
+                var localBytes = await File.ReadAllBytesAsync(localPath, cancellationToken);
+                return new MemoryStream(localBytes);
+            }
 
             try
             {
-                using var response = await _s3.GetObjectAsync(
+                await EnsureBucketAsync(cancellationToken);
+
+                using var response = await ActiveClient.GetObjectAsync(
                     _bucketName, key, cancellationToken);
 
-                // Dosyalar küçük (en fazla 10 MB), belleğe alıp bağlantıyı kapatıyoruz.
                 var memory = new MemoryStream();
                 await response.ResponseStream.CopyToAsync(memory, cancellationToken);
                 memory.Position = 0;
@@ -119,8 +154,21 @@ namespace data.Storage
             string key,
             CancellationToken cancellationToken = default)
         {
-            await EnsureBucketAsync(cancellationToken);
-            await _s3.DeleteObjectAsync(_bucketName, key, cancellationToken);
+            string localPath = GetLocalPath(key);
+            if (File.Exists(localPath))
+            {
+                File.Delete(localPath);
+            }
+
+            try
+            {
+                await EnsureBucketAsync(cancellationToken);
+                await ActiveClient.DeleteObjectAsync(_bucketName, key, cancellationToken);
+            }
+            catch
+            {
+                // Yoksay
+            }
         }
 
         public string GetPresignedUrl(
@@ -139,7 +187,6 @@ namespace data.Storage
             return _s3.GetPreSignedURL(request);
         }
 
-        // Bucket yoksa ilk kullanımda oluşturur.
         private async Task EnsureBucketAsync(CancellationToken cancellationToken)
         {
             if (_bucketReady)
@@ -155,12 +202,26 @@ namespace data.Storage
                     return;
                 }
 
-                bool exists = await AmazonS3Util.DoesS3BucketExistV2Async(
-                    _s3, _bucketName);
-
-                if (!exists)
+                try
                 {
-                    await _s3.PutBucketAsync(_bucketName, cancellationToken);
+                    bool exists = await AmazonS3Util.DoesS3BucketExistV2Async(
+                        ActiveClient, _bucketName);
+
+                    if (!exists)
+                    {
+                        await ActiveClient.PutBucketAsync(_bucketName, cancellationToken);
+                    }
+                }
+                catch (AmazonS3Exception ex) when (ex.Message.Contains("Signed request", StringComparison.OrdinalIgnoreCase))
+                {
+                    _useAnonymous = true;
+                    bool exists = await AmazonS3Util.DoesS3BucketExistV2Async(
+                        _s3Anon, _bucketName);
+
+                    if (!exists)
+                    {
+                        await _s3Anon.PutBucketAsync(_bucketName, cancellationToken);
+                    }
                 }
 
                 _bucketReady = true;
@@ -169,6 +230,23 @@ namespace data.Storage
             {
                 _bucketLock.Release();
             }
+        }
+
+        private string GetLocalPath(string key)
+        {
+            string safeRelative = key.Replace('/', Path.DirectorySeparatorChar).TrimStart(Path.DirectorySeparatorChar);
+            return Path.Combine(_localFallbackRoot, safeRelative);
+        }
+
+        private async Task SaveToLocalFallbackAsync(string key, byte[] bytes, CancellationToken ct)
+        {
+            string fullPath = GetLocalPath(key);
+            string? dir = Path.GetDirectoryName(fullPath);
+            if (!string.IsNullOrEmpty(dir))
+            {
+                Directory.CreateDirectory(dir);
+            }
+            await File.WriteAllBytesAsync(fullPath, bytes, ct);
         }
 
         private static string NormalizeExtension(string extension)

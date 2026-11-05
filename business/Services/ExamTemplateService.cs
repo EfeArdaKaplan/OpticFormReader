@@ -1,4 +1,4 @@
-﻿using core.DTOs;
+using core.DTOs;
 using core.Entities;
 using core.Interfaces;
 using System.Text.Json;
@@ -79,8 +79,8 @@ namespace business.Services
             foreach (var section in BuildSections(request.Sections))
             {
                 template.Sections.Add(section);
-                template.LayoutJson = string.Empty;
             }
+            template.LayoutJson = string.Empty;
 
             await _examTemplateRepository.UpdateAsync(template);
         }

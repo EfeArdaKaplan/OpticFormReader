@@ -8,9 +8,11 @@ services:
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: postgres
     ports:
-      - "${POSTGRES_PORT:-5432}:5432"
+      - "${POSTGRES_PORT:-5433}:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
+    networks:
+      - optic_net
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U postgres -d opticdb"]
       interval: 5s
@@ -27,6 +29,8 @@ services:
       - "9333:9333"
     volumes:
       - seaweedfs_data:/data
+    networks:
+      - optic_net
 
   optic-app:
     build:
@@ -40,6 +44,11 @@ services:
       Jwt__Key: "super_secret_jwt_key_that_is_at_least_32_chars_long_12345"
       Jwt__Issuer: "OpticalReaderApi"
       Jwt__Audience: "OpticalReaderClient"
+      Smtp__Host: "smtp.gmail.com"
+      Smtp__Port: "587"
+      Smtp__Email: "info.optimatrix@gmail.com"
+      Smtp__Password: "ycft ywes kebu jbjo"
+      Smtp__DisplayName: "OptiMatrix Doğrulama Merkezi"
       Storage__Endpoint: "http://seaweedfs:8333"
       Storage__BucketName: "optic-sheets"
       Storage__ForcePathStyle: "true"
@@ -48,11 +57,23 @@ services:
       ASPNETCORE_URLS: "http://+:5144"
     ports:
       - "5144:5144"
+    networks:
+      - optic_net
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:5144/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
     depends_on:
       postgres:
         condition: service_healthy
       seaweedfs:
         condition: service_started
+
+networks:
+  optic_net:
+    driver: bridge
 
 volumes:
   postgres_data:

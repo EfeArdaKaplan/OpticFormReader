@@ -1,7 +1,6 @@
 using core.DTOs;
 using core.Interfaces;
 using Microsoft.AspNetCore.Authorization;
-using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using System.Security.Claims;
 
@@ -16,6 +15,62 @@ namespace WebApi.Controllers
         public AuthController(IAuthService authService)
         {
             _authService = authService;
+        }
+
+        [HttpPost("send-code")]
+        public async Task<IActionResult> SendVerificationCode([FromBody] SendVerificationCodeDto request)
+        {
+            try
+            {
+                await _authService.SendVerificationCodeAsync(request);
+                return Ok(new { message = "6 haneli doğrulama kodu e-posta adresinize gönderildi." });
+            }
+            catch (Exception ex)
+            {
+                return BadRequest(new { message = ex.Message });
+            }
+        }
+
+        [HttpPost("verify-register")]
+        public async Task<IActionResult> VerifyAndRegister([FromBody] VerifyRegistrationDto request)
+        {
+            try
+            {
+                var result = await _authService.VerifyAndRegisterAsync(request);
+                return Ok(result);
+            }
+            catch (Exception ex)
+            {
+                return BadRequest(new { message = ex.Message });
+            }
+        }
+
+        [HttpPost("forgot-password/send-code")]
+        public async Task<IActionResult> SendPasswordResetCode([FromBody] ForgotPasswordRequestDto request)
+        {
+            try
+            {
+                await _authService.SendPasswordResetCodeAsync(request);
+                return Ok(new { message = "6 haneli şifre sıfırlama kodu e-posta adresinize gönderildi." });
+            }
+            catch (Exception ex)
+            {
+                return BadRequest(new { message = ex.Message });
+            }
+        }
+
+        [HttpPost("forgot-password/reset")]
+        public async Task<IActionResult> ResetPassword([FromBody] ResetPasswordConfirmDto request)
+        {
+            try
+            {
+                await _authService.ResetPasswordAsync(request);
+                return Ok(new { message = "Şifreniz başarıyla güncellendi. Yeni şifrenizle giriş yapabilirsiniz." });
+            }
+            catch (Exception ex)
+            {
+                return BadRequest(new { message = ex.Message });
+            }
         }
 
         [HttpPost("register")]
@@ -33,7 +88,7 @@ namespace WebApi.Controllers
         }
 
         [HttpPost("login")]
-        public  async Task<IActionResult> Login([FromBody] LoginRequestDto request)
+        public async Task<IActionResult> Login([FromBody] LoginRequestDto request)
         {
             try
             {

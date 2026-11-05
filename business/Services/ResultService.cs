@@ -300,6 +300,7 @@ namespace business.Services
             // Öğretmen düzelttiği için şüpheli bayrağını kaldır
             sheet.NeedsReview = false;
             sheet.ReviewReason = null;
+            sheet.ProcessingStatus = "Done";
 
             // Eğer kitapçık değiştiyse, öğrencinin puanlarını yeni kitapçığa göre anında yeniden hesapla
             if (bookletChanged)
@@ -360,9 +361,10 @@ namespace business.Services
                     string selected = ans?.SelectedOption ?? string.Empty;
 
                     correctAnswers.TryGetValue(q, out var correctOpt);
+                    correctOpt ??= string.Empty;
 
-                    if (string.IsNullOrEmpty(selected)) empty++;
-                    else if (string.Equals(selected, correctOpt, StringComparison.OrdinalIgnoreCase)) correct++;
+                    if (string.IsNullOrEmpty(selected) || string.IsNullOrEmpty(correctOpt)) empty++;
+                    else if (string.Equals(selected.Trim(), correctOpt.Trim(), StringComparison.OrdinalIgnoreCase)) correct++;
                     else wrong++;
                 }
 

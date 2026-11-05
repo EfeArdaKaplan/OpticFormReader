@@ -1,5 +1,7 @@
+using System.Threading.RateLimiting;
 using business.Services;
 using data.Storage;
+using WebApi.Middleware;
 using QuestPDF.Infrastructure;
 using core.interfaces;
 using core.Interfaces;
@@ -16,11 +18,25 @@ var builder = WebApplication.CreateBuilder(args);
 
 QuestPDF.Settings.License = LicenseType.Community;
 
-// Add services to the container.
-
 builder.Services.AddControllers();
 builder.Services.AddSignalR();
 builder.Services.AddHealthChecks();
+
+// Rate Limiting (API Security Best Practices: Brute-force & DDoS Koruması)
+builder.Services.AddRateLimiter(options =>
+{
+    options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
+    options.GlobalLimiter = PartitionedRateLimiter.Create<HttpContext, string>(httpContext =>
+        RateLimitPartition.GetFixedWindowLimiter(
+            partitionKey: httpContext.Connection.RemoteIpAddress?.ToString() ?? "anonymous",
+            factory: _ => new FixedWindowRateLimiterOptions
+            {
+                AutoReplenishment = true,
+                PermitLimit = 120,
+                QueueLimit = 10,
+                Window = TimeSpan.FromMinutes(1)
+            }));
+});
 
 builder.Services.AddCors(options =>
 {
@@ -30,7 +46,7 @@ builder.Services.AddCors(options =>
             .WithOrigins("https://omr-frontend-pink.vercel.app", "http://localhost:5500", "http://127.0.0.1:5500")
             .AllowAnyHeader()
             .AllowAnyMethod()
-            .AllowCredentials(); // SignalR için gerekli
+            .AllowCredentials();
     });
 });
 
@@ -62,7 +78,13 @@ builder.Services.AddScoped<IResultService, ResultService>();
 builder.Services.AddScoped<IExportService, ExportService>();
 
 // JWT Authentication
-var jwtKey = builder.Configuration["Jwt:Key"]!;
+var jwtKey = builder.Configuration["Jwt:Key"];
+// Fail-fast: HS256 için anahtar en az 32 byte olmalı; aksi halde login anında çalışma zamanı hatası oluşur.
+if (string.IsNullOrWhiteSpace(jwtKey) || jwtKey == "CHANGE_ME" || Encoding.UTF8.GetByteCount(jwtKey) < 32)
+{
+    throw new InvalidOperationException(
+        "Jwt:Key yapılandırılmamış veya 32 byte'tan kısa. user-secrets ya da Jwt__Key ortam değişkeni ile ayarlayın.");
+}
 builder.Services.AddAuthentication(options =>
 {
     options.DefaultAuthenticateScheme = JwtBearerDefaults.AuthenticationScheme;
@@ -79,6 +101,21 @@ builder.Services.AddAuthentication(options =>
         ValidIssuer = builder.Configuration["Jwt:Issuer"],
         ValidAudience = builder.Configuration["Jwt:Audience"],
         IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(jwtKey))
+    };
+
+    // SignalR WebSocket bağlantılarında query string üzerinden JWT token okuma desteği
+    options.Events = new JwtBearerEvents
+    {
+        OnMessageReceived = context =>
+        {
+            var accessToken = context.Request.Query["access_token"];
+            var path = context.HttpContext.Request.Path;
+            if (!string.IsNullOrEmpty(accessToken) && path.StartsWithSegments("/hubs/evaluation"))
+            {
+                context.Token = accessToken;
+            }
+            return Task.CompletedTask;
+        }
     };
 });
 
@@ -103,11 +140,10 @@ builder.Services.AddSwaggerGen(options =>
 
 var app = builder.Build();
 
-// Configure the HTTP request pipeline.
 app.UseSwagger();
 app.UseSwaggerUI();
 
-// Otomatik Veritabani Migration (Docker ve yerel baslangic icin)
+// Otomatik Veritabanı Migration (Docker ve yerel başlangıç için)
 using (var scope = app.Services.CreateScope())
 {
     var services = scope.ServiceProvider;
@@ -119,6 +155,31 @@ using (var scope = app.Services.CreateScope())
             try
             {
                 db.Database.Migrate();
+
+                // Mevcut veritabanı kayıtlarındaki düz metin (plaintext) kişisel verileri de otomatik olarak $h256$... formatına dönüştür
+                foreach (var u in db.Users.ToList())
+                {
+                    db.Entry(u).Property(x => x.FullName).IsModified = true;
+                    db.Entry(u).Property(x => x.Email).IsModified = true;
+                }
+                foreach (var s in db.StudentSheets.ToList())
+                {
+                    db.Entry(s).Property(x => x.StudentNumber).IsModified = true;
+                    db.Entry(s).Property(x => x.FirstName).IsModified = true;
+                    db.Entry(s).Property(x => x.LastName).IsModified = true;
+                    db.Entry(s).Property(x => x.TcNo).IsModified = true;
+                    db.Entry(s).Property(x => x.ImageKey).IsModified = true;
+                }
+                foreach (var b in db.UploadBatches.ToList())
+                {
+                    db.Entry(b).Property(x => x.OriginalFileName).IsModified = true;
+                    db.Entry(b).Property(x => x.FileKey).IsModified = true;
+                }
+                foreach (var t in db.ExamTemplates.ToList())
+                {
+                    db.Entry(t).Property(x => x.InstitutionName).IsModified = true;
+                }
+                db.SaveChanges();
                 break;
             }
             catch when (i < 4)
@@ -129,14 +190,27 @@ using (var scope = app.Services.CreateScope())
     }
     catch (Exception ex)
     {
-        Console.WriteLine($"DB Migration uyarisi: {ex.Message}");
+        services.GetRequiredService<ILoggerFactory>()
+            .CreateLogger("DbMigration")
+            .LogError(ex, "Veritabanı migration işlemi başarısız oldu.");
     }
 }
 
+// OWASP Security Headers (api-security-best-practices & security-and-hardening)
+app.Use(async (context, next) =>
+{
+    context.Response.Headers.Append("X-Content-Type-Options", "nosniff");
+    context.Response.Headers.Append("X-Frame-Options", "DENY");
+    context.Response.Headers.Append("X-XSS-Protection", "1; mode=block");
+    context.Response.Headers.Append("Referrer-Policy", "strict-origin-when-cross-origin");
+    await next();
+});
+
 app.UseDefaultFiles();
 app.UseStaticFiles();
+app.UsePerformanceLogging();
 
-if (!app.Environment.IsEnvironment("Docker"))
+if (!app.Environment.IsDevelopment() && !app.Environment.IsEnvironment("Docker"))
 {
     app.UseHttpsRedirection();
 }
@@ -144,6 +218,7 @@ if (!app.Environment.IsEnvironment("Docker"))
 app.UseRouting();
 
 app.UseCors("Frontend");
+app.UseRateLimiter();
 
 app.UseAuthentication();
 app.UseAuthorization();

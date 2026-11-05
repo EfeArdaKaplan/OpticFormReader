@@ -1,4 +1,4 @@
-﻿using core.DTOs;
+using core.DTOs;
 using core.Entities;
 using core.interfaces;
 using core.Interfaces;
@@ -10,7 +10,7 @@ namespace business.Services
     {
         private static readonly HashSet<string> AllowedExtensions = new(StringComparer.OrdinalIgnoreCase)
         {
-            ".jpg", ".jpeg", ".png", ".pdf"
+            ".jpg", ".jpeg", ".png", ".pdf", ".svg", ".webp", ".bmp"
         };
 
         private const long MaxFileSize = 50 * 1024 * 1024; // 50 MB
@@ -218,12 +218,14 @@ namespace business.Services
             Id = b.Id,
             ExamId = b.ExamId,
             OriginalFileName = b.OriginalFileName,
-            Format = b.Format,
+            Format = formatOrDefault(b.Format),
             FileKey = b.FileKey,
             PageCount = b.PageCount,
             ProcessingStatus = b.ProcessingStatus,
             UploadedAt = b.UploadedAt
         };
+
+        private static string formatOrDefault(string? f) => string.IsNullOrWhiteSpace(f) ? "JPG" : f;
 
         private static StudentSheetDto MapSheetToDto(StudentSheet s) => new()
         {

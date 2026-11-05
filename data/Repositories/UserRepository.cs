@@ -1,4 +1,4 @@
-﻿using core.Entities;
+using core.Entities;
 using core.Interfaces;
 using data.Context;
 using Microsoft.EntityFrameworkCore;
@@ -21,7 +21,11 @@ namespace data.Repositories
 
         public async Task<User?> GetByEmailAsync(string email)
         {
-            return await _context.Users.FirstOrDefaultAsync(u => u.Email == email);
+            if (string.IsNullOrWhiteSpace(email))
+                return null;
+
+            var normalized = email.Trim().ToLowerInvariant();
+            return await _context.Users.FirstOrDefaultAsync(u => u.Email == normalized);
         }
 
         public async Task<User> AddAsync(User user)

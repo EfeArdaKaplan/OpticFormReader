@@ -35,18 +35,18 @@ namespace WebApi.Controllers
         /// </summary>
         [HttpPost("upload")]
         [RequestSizeLimit(100 * 1024 * 1024)] // 100 MB toplam istek limiti
-        public async Task<IActionResult> Upload(int examId, [FromForm] List<IFormFile> files)
+        public async Task<IActionResult> Upload(int examId, [FromForm] List<IFormFile> files, CancellationToken cancellationToken)
         {
             if (files == null || files.Count == 0)
             {
                 return BadRequest(new { message = "Lütfen en az bir dosya seçin veya kameradan çekim yapın." });
             }
 
+            var fileDtos = new List<UploadFileDto>();
             try
             {
                 var userId = GetCurrentUserId();
 
-                var fileDtos = new List<UploadFileDto>();
                 foreach (var file in files)
                 {
                     fileDtos.Add(new UploadFileDto
@@ -58,12 +58,19 @@ namespace WebApi.Controllers
                     });
                 }
 
-                var result = await _sheetService.UploadSheetsAsync(examId, userId, fileDtos);
+                var result = await _sheetService.UploadSheetsAsync(examId, userId, fileDtos, cancellationToken);
                 return Ok(result);
             }
             catch (Exception ex)
             {
                 return BadRequest(new { message = ex.Message });
+            }
+            finally
+            {
+                foreach (var dto in fileDtos)
+                {
+                    await dto.Content.DisposeAsync();
+                }
             }
         }
 
@@ -129,7 +136,7 @@ namespace WebApi.Controllers
         /// Optik kağıdın orijinal görüntüsünü döner (Frontend önizlemesi için)
         /// </summary>
         [HttpGet("{sheetId}/image")]
-        public async Task<IActionResult> GetSheetImage(int examId, int sheetId)
+        public async Task<IActionResult> GetSheetImage(int examId, int sheetId, CancellationToken cancellationToken)
         {
             try
             {
@@ -140,9 +147,8 @@ namespace WebApi.Controllers
                     return NotFound(new { message = "Kağıt veya görsel bulunamadı." });
                 }
 
-                var stream = await _storage.OpenReadAsync(sheet.ImageKey);
+                var stream = await _storage.OpenReadAsync(sheet.ImageKey, cancellationToken);
 
-                // Uzantıya göre doğru MIME tipini belirle
                 var ext = Path.GetExtension(sheet.ImageKey).ToLowerInvariant();
                 var contentType = ext switch
                 {
@@ -152,7 +158,6 @@ namespace WebApi.Controllers
                     _ => "application/octet-stream"
                 };
 
-                // Dosyayı inline olarak stream ediyoruz; böylece indirmek yerine doğrudan ekranda gösterilir
                 return File(stream, contentType);
             }
             catch (FileNotFoundException)
