@@ -1,6 +1,5 @@
 using business.Services;
 using data.Storage;
-using WebApi.Middleware;
 using QuestPDF.Infrastructure;
 using core.interfaces;
 using core.Interfaces;
@@ -8,6 +7,7 @@ using data.Context;
 using data.Repositories;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Diagnostics;
 using Microsoft.IdentityModel.Tokens;
 using Microsoft.OpenApi;
 using System.Text;
@@ -35,7 +35,10 @@ builder.Services.AddCors(options =>
 });
 
 builder.Services.AddDbContext<AppDbContext>(options =>
-    options.UseNpgsql(builder.Configuration.GetConnectionString("DefaultConnection")));
+{
+    options.UseNpgsql(builder.Configuration.GetConnectionString("DefaultConnection"));
+    options.ConfigureWarnings(w => w.Ignore(RelationalEventId.PendingModelChangesWarning));
+});
 
 // Repository ve Service DI kayıtları
 builder.Services.AddScoped<IUserRepository, UserRepository>();
@@ -130,19 +133,8 @@ using (var scope = app.Services.CreateScope())
     }
 }
 
-// OWASP Security Headers (api-security-best-practices & security-and-hardening)
-app.Use(async (context, next) =>
-{
-    context.Response.Headers.Append("X-Content-Type-Options", "nosniff");
-    context.Response.Headers.Append("X-Frame-Options", "DENY");
-    context.Response.Headers.Append("X-XSS-Protection", "1; mode=block");
-    context.Response.Headers.Append("Referrer-Policy", "strict-origin-when-cross-origin");
-    await next();
-});
-
 app.UseDefaultFiles();
 app.UseStaticFiles();
-app.UsePerformanceLogging();
 
 if (!app.Environment.IsEnvironment("Docker"))
 {
