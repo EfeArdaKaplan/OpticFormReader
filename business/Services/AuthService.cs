@@ -22,6 +22,13 @@ namespace business.Services
 
         public async Task<LoginResponseDto> RegisterAsync(RegisterRequestDto request)
         {
+            if (string.IsNullOrWhiteSpace(request.Password) || request.Password.Length < 6)
+                throw new Exception("Þifre en az 6 karakter olmalýdýr.");
+            if (string.IsNullOrWhiteSpace(request.Email) || !request.Email.Contains('@'))
+                throw new Exception("Geçerli bir e-posta adresi giriniz.");
+            if (string.IsNullOrWhiteSpace(request.FullName) || request.FullName.Trim().Length < 2)
+                throw new Exception("Ad Soyad en az 2 karakter olmalýdýr.");
+
             var existingUser = await _userRepository.GetByEmailAsync(request.Email);
             if (existingUser != null)
             {

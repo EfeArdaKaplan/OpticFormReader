@@ -18,7 +18,7 @@ const STORAGE_KEY = 'optimatrix_clean_v5';
 
 // Varsayılan Uygulama Durumu (Initial State)
 const defaultState = {
-  view: 'auth', // 'landing' | 'auth' | 'app' (Başlangıçta doğrudan Giriş / Login ekranı)
+  view: 'landing', // 'landing' | 'auth' | 'app'
   isLoggedIn: false,
   currentUser: {
     name: 'Prof. Dr. Ahmet Yılmaz',
@@ -423,16 +423,16 @@ function loadPersistedState() {
         state.view = 'app';
         state.appTab = parsed.appTab || 'home';
       } else {
-        // Oturum açılmamışsa veya token sahte/süresi dolmuşsa DOĞRUDAN GİRİŞ (auth) EKRANINA GİT!
+        // Oturum açılmamışsa veya token sahte/süresi dolmuşsa LANDING SAYFASINA GİT
         state.token = '';
         state.isLoggedIn = false;
-        state.view = 'auth';
+        state.view = 'landing';
         state.appTab = 'home';
         localStorage.removeItem('optimatrix_jwt_token');
       }
     } else {
       state = JSON.parse(JSON.stringify(defaultState));
-      state.view = 'auth';
+      state.view = 'landing';
       state.isLoggedIn = false;
       state.token = '';
       localStorage.removeItem('optimatrix_jwt_token');
@@ -440,7 +440,7 @@ function loadPersistedState() {
   } catch (err) {
     console.warn('Durum geri yükleme hatası:', err);
     state = JSON.parse(JSON.stringify(defaultState));
-    state.view = 'auth';
+    state.view = 'landing';
     state.isLoggedIn = false;
     state.token = '';
     localStorage.removeItem('optimatrix_jwt_token');

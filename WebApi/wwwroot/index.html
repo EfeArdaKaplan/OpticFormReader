@@ -85,7 +85,7 @@
   <!-- =========================================================================
        2. AÇILIŞ (LANDING / TANITIM) EKRANI
        ========================================================================= -->
-  <section id="view-landing" class="view-section hidden">
+  <section id="view-landing" class="view-section active">
     <div class="landing-hero">
       <div class="container hero-container">
         <div class="hero-badge">
@@ -160,7 +160,7 @@
   <!-- =========================================================================
        3. GİRİŞ & KAYIT OL EKRANI (AUTH SECTION)
        ========================================================================= -->
-  <section id="view-auth" class="view-section active">
+  <section id="view-auth" class="view-section hidden">
     <div class="auth-wrapper">
       <div class="auth-card">
         <div class="auth-header">
@@ -191,11 +191,11 @@
         <form id="form-login" class="auth-form" onsubmit="handleLoginSubmit(event)">
           <div class="form-control-group">
             <label for="login-email">E-Posta Adresi</label>
-            <input type="email" id="login-email" class="form-input" value="hoca@universite.edu.tr" required>
+            <input type="email" id="login-email" class="form-input" placeholder="E-posta adresiniz" required>
           </div>
           <div class="form-control-group">
             <label for="login-password">Şifre</label>
-            <input type="password" id="login-password" class="form-input" value="123456" required>
+            <input type="password" id="login-password" class="form-input" placeholder="Şifrenizi giriniz" required>
           </div>
           <div class="form-meta-row">
             <label class="remember-label">
@@ -207,10 +207,7 @@
             <span>Giriş Yap</span>
             <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14m-7-7l7 7-7 7"/></svg>
           </button>
-          <div class="demo-credential-tip">
-            💡 <strong>Hızlı Test:</strong> Form otomatik doludur, doğrudan <em>Giriş Yap</em> butonuna basabilirsiniz.
-          </div>
-        </form>
+                  </form>
 
         <!-- Kayıt Formu -->
         <form id="form-register" class="auth-form hidden" onsubmit="handleRegisterSubmit(event)">
@@ -224,7 +221,7 @@
           </div>
           <div class="form-control-group">
             <label for="reg-password">Şifre</label>
-            <input type="password" id="reg-password" class="form-input" placeholder="En az 6 karakter" required>
+            <input type="password" id="reg-password" class="form-input" placeholder="En az 6 karakter" minlength="6" required>
           </div>
           <button type="submit" class="btn btn-primary btn-block btn-lg">
             <span>Hesap Oluştur & Başla</span>
