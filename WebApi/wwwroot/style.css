@@ -614,6 +614,46 @@ body {
   box-shadow: var(--shadow-sm);
 }
 
+/* Canlı Auth Hata Kutusu */
+.auth-alert-box {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  background-color: var(--danger-bg);
+  border: 1px solid var(--danger-border);
+  color: #ffccd5;
+  border-radius: var(--radius-sm);
+  padding: 10px 14px;
+  font-size: 0.82rem;
+  font-weight: 500;
+  line-height: 1.4;
+  margin-bottom: 16px;
+  box-shadow: 0 2px 8px rgba(244, 63, 94, 0.15);
+  animation: authAlertFadeIn 0.25s ease-out;
+}
+
+@keyframes authAlertFadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.auth-alert-box.hidden {
+  display: none !important;
+}
+
+.auth-alert-icon {
+  flex-shrink: 0;
+  width: 18px;
+  height: 18px;
+  color: var(--danger);
+}
+
 .auth-form {
   display: flex;
   flex-direction: column;

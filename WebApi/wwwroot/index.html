@@ -177,6 +177,16 @@
           <button type="button" class="auth-tab-btn" id="tab-btn-forgot" onclick="switchAuthTab('forgot')">Şifremi Unuttum</button>
         </div>
 
+        <!-- Canlı Hata / Uyarı Kutusu -->
+        <div id="auth-alert" class="auth-alert-box hidden" role="alert">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="auth-alert-icon">
+            <circle cx="12" cy="12" r="10" />
+            <line x1="12" y1="8" x2="12" y2="12" />
+            <line x1="12" y1="16" x2="12.01" y2="16" />
+          </svg>
+          <span id="auth-alert-text"></span>
+        </div>
+
         <!-- Giriş Formu -->
         <form id="form-login" class="auth-form" onsubmit="handleLoginSubmit(event)">
           <div class="form-control-group">

@@ -308,6 +308,7 @@ document.addEventListener('DOMContentLoaded', () => {
   initTheme();
   setupGlobalEvents();
   setupInactivityTracker();
+  initAuthInputListeners();
   syncUI();
 });
 
@@ -528,8 +529,41 @@ function onBrandClick() {
   }
 }
 
+function showAuthError(message) {
+  const alertBox = document.getElementById('auth-alert');
+  const alertText = document.getElementById('auth-alert-text');
+  if (alertBox && alertText) {
+    alertText.textContent = message;
+    alertBox.classList.remove('hidden');
+  }
+}
+
+function clearAuthError() {
+  const alertBox = document.getElementById('auth-alert');
+  const alertText = document.getElementById('auth-alert-text');
+  if (alertBox) {
+    alertBox.classList.add('hidden');
+  }
+  if (alertText) {
+    alertText.textContent = '';
+  }
+}
+
+function initAuthInputListeners() {
+  const ids = ['login-email', 'login-password', 'reg-name', 'reg-email', 'reg-password', 'forgot-email'];
+  ids.forEach(id => {
+    const el = document.getElementById(id);
+    if (el) {
+      el.addEventListener('input', () => {
+        clearAuthError();
+      });
+    }
+  });
+}
+
 function switchAuthTab(tab) {
   state.authTab = tab;
+  clearAuthError();
   ['login', 'register', 'forgot'].forEach(t => {
     const btn = document.getElementById(`tab-btn-${t}`);
     const form = document.getElementById(`form-${t}`);
@@ -540,10 +574,23 @@ function switchAuthTab(tab) {
 
 async function handleLoginSubmit(event) {
   event.preventDefault();
+  clearAuthError();
+
   const emailInput = document.getElementById('login-email');
   const passInput = document.getElementById('login-password');
-  const email = emailInput ? emailInput.value.trim() : 'hoca@universite.edu.tr';
-  const password = passInput ? passInput.value : '123456';
+  const email = emailInput ? emailInput.value.trim() : '';
+  const password = passInput ? passInput.value : '';
+
+  if (!email) {
+    showAuthError('Lütfen e-posta adresinizi giriniz.');
+    if (emailInput) emailInput.focus();
+    return;
+  }
+  if (!password) {
+    showAuthError('Lütfen şifrenizi giriniz.');
+    if (passInput) passInput.focus();
+    return;
+  }
 
   try {
     const res = await apiRequest('/api/Auth/login', 'POST', { email, password });
@@ -562,43 +609,56 @@ async function handleLoginSubmit(event) {
     showToast(`Giriş başarılı! Hoş geldiniz, ${res.fullName}.`, 'success');
     await loadInitialDataFromApi();
   } catch (err) {
-    // Demo kolaylığı: Eğer kullanıcı yoksa otomatik kaydetmeyi dene
-    if (err.message.includes('bulunamadı') || err.message.includes('geçersiz') || err.message.includes('400')) {
-      try {
-        const regRes = await apiRequest('/api/Auth/register', 'POST', {
-          fullName: 'Prof. Dr. Ahmet Yılmaz',
-          email: email,
-          password: password || '123456'
-        });
-        state.isLoggedIn = true;
-        state.token = regRes.token;
-        localStorage.setItem('optimatrix_jwt_token', regRes.token);
-        state.currentUser = { name: regRes.fullName, email: regRes.email, role: 'Fakülte Koordinatörü' };
-        state.view = 'app';
-        state.appTab = 'home';
-        saveState();
-        syncUI();
-        showToast('Demo hesabı oluşturuldu ve giriş yapıldı!', 'success');
-        await loadInitialDataFromApi();
-        return;
-      } catch (regErr) {
-        showToast(`Giriş hatası: ${regErr.message}`, 'danger');
-        return;
-      }
+    let friendlyMessage = 'Giriş yapılamadı.';
+    const raw = (err && err.message) ? err.message : '';
+
+    if (raw.includes('E-posta veya şifre hatalı')) {
+      friendlyMessage = 'E-posta veya şifre hatalı. Lütfen bilgilerinizi kontrol ediniz.';
+    } else if (raw.includes('bulunamadı') || raw.includes('böyle bir hesap')) {
+      friendlyMessage = 'Böyle bir hesap bulunamadı. Lütfen kayıt olunuz.';
+    } else if (raw.includes('transient failure') || raw.includes('Name or service not known') || raw.includes('bağlantı') || raw.includes('Failed to fetch') || raw.includes('NetworkError')) {
+      friendlyMessage = 'Veritabanı veya sunucu bağlantısı sağlanamadı. Docker servislerini kontrol ediniz.';
+    } else if (raw) {
+      friendlyMessage = raw;
     }
-    showToast(`Giriş hatası: ${err.message}`, 'danger');
+
+    showAuthError(friendlyMessage);
+    showToast(friendlyMessage, 'danger');
   }
 }
 
 async function handleRegisterSubmit(event) {
   event.preventDefault();
+  clearAuthError();
+
   const nameInput = document.getElementById('reg-name');
   const emailInput = document.getElementById('reg-email');
   const passInput = document.getElementById('reg-password');
 
-  const name = nameInput ? nameInput.value.trim() : 'Öğretim Görevlisi';
-  const email = emailInput ? emailInput.value.trim() : 'hoca@universite.edu.tr';
-  const password = passInput ? passInput.value : '123456';
+  const name = nameInput ? nameInput.value.trim() : '';
+  const email = emailInput ? emailInput.value.trim() : '';
+  const password = passInput ? passInput.value : '';
+
+  if (!name) {
+    showAuthError('Lütfen adınızı ve soyadınızı giriniz.');
+    if (nameInput) nameInput.focus();
+    return;
+  }
+  if (!email) {
+    showAuthError('Lütfen geçerli bir e-posta adresi giriniz.');
+    if (emailInput) emailInput.focus();
+    return;
+  }
+  if (!password) {
+    showAuthError('Lütfen bir şifre belirleyiniz.');
+    if (passInput) passInput.focus();
+    return;
+  }
+  if (password.length < 6) {
+    showAuthError('Şifreniz en az 6 karakter olmalıdır.');
+    if (passInput) passInput.focus();
+    return;
+  }
 
   try {
     const res = await apiRequest('/api/Auth/register', 'POST', { fullName: name, email, password });
@@ -617,12 +677,32 @@ async function handleRegisterSubmit(event) {
     showToast('Hesabınız başarıyla oluşturuldu!', 'success');
     await loadInitialDataFromApi();
   } catch (err) {
-    showToast(`Kayıt hatası: ${err.message}`, 'danger');
+    let friendlyMessage = 'Kayıt işlemi başarısız oldu.';
+    const raw = (err && err.message) ? err.message : '';
+
+    if (raw.includes('zaten kayıtlı')) {
+      friendlyMessage = 'Bu e-posta adresi zaten kayıtlı. Lütfen giriş yapınız.';
+    } else if (raw.includes('transient failure') || raw.includes('Name or service not known') || raw.includes('bağlantı') || raw.includes('Failed to fetch') || raw.includes('NetworkError')) {
+      friendlyMessage = 'Veritabanı veya sunucu bağlantısı sağlanamadı. Docker servislerini kontrol ediniz.';
+    } else if (raw) {
+      friendlyMessage = raw;
+    }
+
+    showAuthError(friendlyMessage);
+    showToast(friendlyMessage, 'danger');
   }
 }
 
 function handleForgotSubmit(event) {
   event.preventDefault();
+  clearAuthError();
+  const forgotInput = document.getElementById('forgot-email');
+  const email = forgotInput ? forgotInput.value.trim() : '';
+  if (!email) {
+    showAuthError('Lütfen kayıtlı e-posta adresinizi giriniz.');
+    if (forgotInput) forgotInput.focus();
+    return;
+  }
   showToast('Şifre sıfırlama bağlantısı e-posta adresinize gönderildi.', 'info');
   switchAuthTab('login');
 }
