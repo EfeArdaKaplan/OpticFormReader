@@ -19,6 +19,33 @@
 
 ---
 
+## 🇬🇧 English Summary
+
+**OptiMatrix** (repository: `OpticFormReader`) is an optical mark recognition (OMR) and exam-grading platform built with **ASP.NET Core (.NET 10)** using a layered architecture (`core`, `data`, `business`, `WebApi`). The Turkish documentation below is the full reference.
+
+### Highlights
+- **OMR engine** (`FastOmrEngine`): Otsu thresholding, homography-based perspective correction, and parallel evaluation with `Parallel.ForEachAsync`.
+- **Vector A4 form generation** with QuestPDF; image processing with SkiaSharp.
+- **Authentication:** JWT, BCrypt password hashing, e-mail verification codes sent through SMTP, constant-time code comparison (`CryptographicOperations.FixedTimeEquals`).
+- **Data layer:** PostgreSQL with Entity Framework Core (Code-First migrations); personal-data protection via `SensitiveDataHasher`.
+- **Storage:** S3-compatible object storage (AWSSDK.S3) with SeaweedFS in `docker-compose.yml`.
+- **Live progress:** SignalR `EvaluationHub` streams evaluation progress to the UI.
+- **REST API:** 34 REST endpoints (Swagger) plus 2 SignalR hub methods.
+- **Quality:** 23 xUnit tests (all passing at the time of writing: `dotnet test optic.slnx`) and a k6 load-test script in `tests/k6/`.
+- **Deployment:** multi-stage Docker image and Docker Compose.
+
+### Quick start
+```bash
+docker compose up -d --build
+# Web app: http://localhost:5144  |  Swagger: http://localhost:5144/swagger
+dotnet test optic.slnx
+```
+
+### Credits
+Backend, core architecture and REST API: **Efe Arda Kaplan**. Frontend / UI-UX: **Zeynep Yaren Keskin**.
+
+---
+
 ## 🎯 Proje Hakkında
 
 **OptiMatrix**, fiziksel ve vektörel optik sınav kağıtlarının taranarak dijital ortama aktarılması, çok çekirdekli paralel işlemcilerle milisaniyeler içerisinde değerlendirilmesi, canlı baloncuk analizlerinin çıkarılması ve ÖSYM standartlarında karnelerin sunulması amacıyla **Clean Architecture** prensipleriyle geliştirilmiş kurumsal bir OMR (Optical Mark Recognition) platformudur.
@@ -137,7 +164,7 @@ optic/
 │   ├── Migrations/             # Veritabanı Şema & Performans İndeks Geçmişi
 │   └── Repositories/           # Veri Erişim Uygulamaları
 ├── tests/                      # Birim & Yük Testleri
-│   ├── OpticEngine.Tests/      # 20 Birim Testi (OMR Motoru, Auth, Cevap Anahtarı, Sonuçlar)
+│   ├── OpticEngine.Tests/      # 23 Birim Testi (OMR Motoru, Auth, Cevap Anahtarı, Sonuçlar)
 │   └── k6/                     # k6 Yük ve Stres Testi Senaryoları
 ├── sample_sheets/              # Hazır test optik kağıtları (PDF & JPG - Kemal Sunal, Şener Şen...)
 ├── docker-compose.yml          # İzole optic_net ağında tek komutla Compose orkestrasyonu
@@ -227,20 +254,20 @@ k6 run -e API_URL=http://localhost:5144 -e EXAM_ID=1 tests/k6/omr-batch-load-tes
 
 ---
 
-## 📡 REST API Özeti (Swagger / 36 Uç Nokta)
+## 📡 REST API Özeti (Swagger / 34 Uç Nokta)
 
-Platform, kurumsal entegrasyonlar için 8 ana modülde tam **36 adet RESTful uç nokta** sunar:
+Platform, kurumsal entegrasyonlar için 8 ana modülde tam **34 adet RESTful uç nokta** sunar:
 
 | Modül | Uç Nokta Sayısı | Açıklama |
 |---|---|---|
 | **Auth** | 7 | 6 Haneli SMTP Kod Gönderimi (`send-code`), Doğrulamalı Kayıt (`verify-register`), Şifre Sıfırlama Kodu (`forgot-password/send-code`), Şifre Yenileme (`forgot-password/reset`), Giriş (`login`) ve Token Yenileme (`refresh`) |
-| **ExamTemplate** | 5 | Şablon CRUD, Çoklu Ders Yapılandırması ve QuestPDF Form Üretimi |
-| **Exam** | 5 | Sınav Açma, Güncelleme, Durum Takibi ve Sınav Listesi |
-| **AnswerKey** | 4 | A, B, C, D Kitapçıkları için Ders Bazlı Cevap Anahtarı Yönetimi |
-| **OpticalSheet** | 5 | SeaweedFS S3'e Kağıt Yükleme, Önizleme ve Süreli İmzalı URL (Presigned URL) |
-| **Evaluation** | 3 | Çok Çekirdekli Paralel Değerlendirme Tetikleme ve İlerleme Takibi |
-| **Results** | 4 | Sınıf Sıralaması, A4 Öğrenci Karnesi ve Elle Öğretmen Düzeltmesi |
-| **Export** | 3 | Excel Uyumlu Dinamik UTF-8 BOM CSV ve Sonuç Dışa Aktarımı |
+| **ExamTemplate** | 6 | Şablon CRUD, Çoklu Ders Yapılandırması ve QuestPDF Form Üretimi |
+| **Exam** | 4 | Sınav Açma, Güncelleme, Durum Takibi ve Sınav Listesi |
+| **AnswerKey** | 3 | A, B, C, D Kitapçıkları için Ders Bazlı Cevap Anahtarı Yönetimi |
+| **OpticalSheet** | 8 | SeaweedFS S3'e Kağıt Yükleme, Önizleme ve Süreli İmzalı URL (Presigned URL) |
+| **Evaluation** | 2 | Çok Çekirdekli Paralel Değerlendirme Tetikleme ve İlerleme Takibi |
+| **Results** | 3 | Sınıf Sıralaması, A4 Öğrenci Karnesi ve Elle Öğretmen Düzeltmesi |
+| **Export** | 1 | Excel Uyumlu Dinamik UTF-8 BOM CSV ve Sonuç Dışa Aktarımı |
 
 ---
 
