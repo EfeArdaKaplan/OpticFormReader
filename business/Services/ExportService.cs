@@ -12,6 +12,24 @@ namespace business.Services
             _resultService = resultService;
         }
 
+        /// <summary>
+        /// CSV Formula Injection (Excel DDE/Cmd enjeksiyonu) koruması:
+        /// '=', '+', '-', '@', '\t', '\r' ile başlayan hücrelerin başına tek tırnak ekler ve çift tırnakları kaçırır.
+        /// </summary>
+        private static string SanitizeCsvCell(string? value)
+        {
+            if (string.IsNullOrEmpty(value))
+                return string.Empty;
+
+            string cleaned = value.Replace("\"", "\"\"");
+            char first = cleaned[0];
+            if (first is '=' or '+' or '-' or '@' or '\t' or '\r')
+            {
+                cleaned = "'" + cleaned;
+            }
+            return cleaned;
+        }
+
         public async Task<(byte[] FileBytes, string FileName, string ContentType)> ExportResultsCsvAsync(int examId, int ownerUserId)
         {
             var summary = await _resultService.GetExamResultsAsync(examId, ownerUserId);
@@ -19,7 +37,7 @@ namespace business.Services
             var sb = new StringBuilder();
 
             // Sınav Başlığı ve Genel Bilgiler
-            sb.AppendLine($"# Sınav:;{summary.ExamTitle}");
+            sb.AppendLine($"# Sınav:;\"{SanitizeCsvCell(summary.ExamTitle)}\"");
             sb.AppendLine($"# Toplam Öğrenci:;{summary.TotalStudents}");
             sb.AppendLine($"# Sınıf Ortalaması:;{summary.ClassAverage}");
             sb.AppendLine($"# En Yüksek Puan:;{summary.HighestScore}");
@@ -35,7 +53,8 @@ namespace business.Services
 
             foreach (var secName in sectionNames)
             {
-                header.Append($"{secName} (Doğru);{secName} (Yanlış);{secName} (Net);{secName} (Puan);");
+                string safeSec = SanitizeCsvCell(secName);
+                header.Append($"{safeSec} (Doğru);{safeSec} (Yanlış);{safeSec} (Net);{safeSec} (Puan);");
             }
 
             header.Append("Toplam Doğru;Toplam Yanlış;Toplam Boş;Toplam Net;Toplam Puan;Durum");
@@ -46,10 +65,10 @@ namespace business.Services
             {
                 var row = new StringBuilder();
                 row.Append($"{s.Rank};");
-                row.Append($"\"{s.StudentNumber}\";");
-                row.Append($"\"{s.TcNo}\";");
-                row.Append($"\"{s.FullName}\";");
-                row.Append($"{s.Booklet};");
+                row.Append($"\"{SanitizeCsvCell(s.StudentNumber)}\";");
+                row.Append($"\"{SanitizeCsvCell(s.TcNo)}\";");
+                row.Append($"\"{SanitizeCsvCell(s.FullName)}\";");
+                row.Append($"\"{SanitizeCsvCell(s.Booklet)}\";");
 
                 // Ders bazında başarılar
                 foreach (var secName in sectionNames)
@@ -66,7 +85,7 @@ namespace business.Services
                 }
 
                 string status = s.NeedsReview ? $"İncelenmeli ({s.ReviewReason})" : "Normal";
-                row.Append($"{s.CorrectCount};{s.WrongCount};{s.EmptyCount};{s.NetScore};{s.TotalScore};\"{status}\"");
+                row.Append($"{s.CorrectCount};{s.WrongCount};{s.EmptyCount};{s.NetScore};{s.TotalScore};\"{SanitizeCsvCell(status)}\"");
                 sb.AppendLine(row.ToString());
             }
 

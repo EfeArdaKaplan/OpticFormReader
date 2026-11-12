@@ -120,7 +120,7 @@ namespace WebApi.Controllers
             {
                 var userId = GetCurrentUserId();
                 var sheet = await _sheetService.GetSheetByIdAsync(sheetId, userId);
-                if (sheet == null)
+                if (sheet == null || sheet.ExamId != examId)
                 {
                     return NotFound(new { message = "Optik form kağıdı bulunamadı." });
                 }
@@ -142,7 +142,7 @@ namespace WebApi.Controllers
             {
                 var userId = GetCurrentUserId();
                 var sheet = await _sheetService.GetSheetByIdAsync(sheetId, userId);
-                if (sheet == null || string.IsNullOrWhiteSpace(sheet.ImageKey))
+                if (sheet == null || sheet.ExamId != examId || string.IsNullOrWhiteSpace(sheet.ImageKey))
                 {
                     return NotFound(new { message = "Kağıt veya görsel bulunamadı." });
                 }
@@ -155,6 +155,7 @@ namespace WebApi.Controllers
                     ".jpg" or ".jpeg" => "image/jpeg",
                     ".png" => "image/png",
                     ".pdf" => "application/pdf",
+                    ".svg" => "image/svg+xml",
                     _ => "application/octet-stream"
                 };
 
@@ -180,7 +181,7 @@ namespace WebApi.Controllers
             {
                 var userId = GetCurrentUserId();
                 var sheet = await _sheetService.GetSheetByIdAsync(sheetId, userId);
-                if (sheet == null || string.IsNullOrWhiteSpace(sheet.ImageKey))
+                if (sheet == null || sheet.ExamId != examId || string.IsNullOrWhiteSpace(sheet.ImageKey))
                 {
                     return NotFound(new { message = "Kağıt veya görsel bulunamadı." });
                 }
@@ -203,6 +204,11 @@ namespace WebApi.Controllers
             try
             {
                 var userId = GetCurrentUserId();
+                var sheet = await _sheetService.GetSheetByIdAsync(sheetId, userId);
+                if (sheet == null || sheet.ExamId != examId)
+                {
+                    return NotFound(new { message = "Kağıt bu sınava ait değil veya bulunamadı." });
+                }
                 await _sheetService.DeleteSheetAsync(sheetId, userId);
                 return NoContent();
             }

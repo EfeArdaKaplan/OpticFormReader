@@ -492,15 +492,26 @@ function applyTheme(theme) {
 }
 
 // ==========================================================================
-// 3. BİLDİRİM (TOAST) SİSTEMİ
+// 3. BİLDİRİM (TOAST) SİSTEMİ & XSS SANİTİZASYONU
 // ==========================================================================
+function escapeHtml(value) {
+  return String(value ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
 function showToast(message, type = 'info') {
   const container = document.getElementById('toast-container');
   if (!container) return;
 
   const toast = document.createElement('div');
   toast.className = `toast toast-${type}`;
-  toast.innerHTML = `<span>${message}</span>`;
+  const span = document.createElement('span');
+  span.textContent = String(message ?? '');
+  toast.appendChild(span);
   container.appendChild(toast);
 
   setTimeout(() => {

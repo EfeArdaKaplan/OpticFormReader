@@ -3,6 +3,7 @@ using core.DTOs;
 using core.Entities;
 using core.interfaces;
 using core.Interfaces;
+using data.Security;
 using QuestPDF.Infrastructure;
 using System.Text;
 using Xunit;
@@ -359,6 +360,70 @@ namespace OpticEngine.Tests
             Assert.Contains("Temel Matematik (Doğru)", csvText);
         }
 
+        [Fact]
+        public async Task SheetService_SecurityValidation_RejectsSpoofedMagicBytesAndXssSvg()
+        {
+            // Arrange
+            var examRepo = new InMemoryExamRepository();
+            await examRepo.AddAsync(new Exam { Id = 8, OwnerUserId = 1, ExamTemplateId = 1, Title = "Güvenlik Testi" });
+
+            var sheetService = new SheetService(
+                examRepo,
+                new InMemoryBatchRepository(),
+                new InMemorySheetRepository(),
+                new InMemoryFileStorage());
+
+            // 1) .jpg uzantılı ama içeriği JPEG (FF D8 FF) olmayan sahte dosya reddedilmeli
+            using var fakeJpg = new MemoryStream(Encoding.UTF8.GetBytes("MZ_FAKE_EXECUTABLE_CONTENT"));
+            await Assert.ThrowsAsync<ArgumentException>(() =>
+                sheetService.UploadSheetsAsync(8, 1, new List<UploadFileDto>
+                {
+                    new() { FileName = "sahte.jpg", ContentType = "image/jpeg", Length = fakeJpg.Length, Content = fakeJpg }
+                }));
+
+            // 2) İçerisinde <script> barındıran zararlı SVG reddedilmeli
+            using var xssSvg = new MemoryStream(Encoding.UTF8.GetBytes("<svg xmlns='http://www.w3.org/2000/svg'><script>alert(1)</script></svg>"));
+            await Assert.ThrowsAsync<ArgumentException>(() =>
+                sheetService.UploadSheetsAsync(8, 1, new List<UploadFileDto>
+                {
+                    new() { FileName = "zararli.svg", ContentType = "image/svg+xml", Length = xssSvg.Length, Content = xssSvg }
+                }));
+        }
+
+        [Fact]
+        public async Task ExportService_ExportCsv_NeutralizesFormulaInjectionPayloads()
+        {
+            // Arrange
+            var exportService = new ExportService(new FormulaInjectionResultService());
+
+            // Act
+            var (bytes, _, _) = await exportService.ExportResultsCsvAsync(examId: 1, ownerUserId: 1);
+            string csvText = Encoding.UTF8.GetString(bytes, 3, bytes.Length - 3);
+
+            // Assert: '=' ile başlayan öğrenci adı tek tırnak ile etkisizleştirilmeli ("'=CMD|...")
+            Assert.Contains("\"'=CMD|", csvText);
+        }
+
+        [Fact]
+        public void SensitiveDataHasher_ProtectAndUnprotect_IsDeterministicAndReversible()
+        {
+            // Arrange
+            string rawEmail = "  Info.OptiMatrix@Gmail.com ";
+            string rawName = "Efe Arda Kaplan";
+
+            // Act
+            string hashedEmail1 = SensitiveDataHasher.Protect(rawEmail, normalizeLower: true);
+            string hashedEmail2 = SensitiveDataHasher.Protect("info.optimatrix@gmail.com", normalizeLower: true);
+            string hashedName = SensitiveDataHasher.Protect(rawName, normalizeLower: false);
+
+            // Assert
+            Assert.StartsWith("$h256$", hashedEmail1);
+            Assert.Equal(hashedEmail1, hashedEmail2); // Deterministik indeks sorgusu için birebir aynı olmalı
+            Assert.NotEqual(rawName, hashedName);
+            Assert.Equal("info.optimatrix@gmail.com", SensitiveDataHasher.Unprotect(hashedEmail1));
+            Assert.Equal(rawName, SensitiveDataHasher.Unprotect(hashedName));
+        }
+
         // --- In-Memory Test Doubles ---
 
         private sealed class InMemoryTemplateRepository : IExamTemplateRepository
@@ -585,6 +650,39 @@ namespace OpticEngine.Tests
                             {
                                 new() { SectionId = 1, SectionName = "Temel Matematik", CorrectCount = 17, WrongCount = 2, EmptyCount = 1, Score = 85.0 }
                             }
+                        }
+                    }
+                });
+            }
+
+            public Task<StudentDetailedReportDto> GetStudentReportAsync(int examId, int sheetId, int ownerUserId) =>
+                throw new NotImplementedException();
+
+            public Task<StudentResultItemDto> UpdateSheetManualAsync(int examId, int sheetId, int ownerUserId, ManualCorrectionDto request) =>
+                throw new NotImplementedException();
+        }
+
+        private sealed class FormulaInjectionResultService : IResultService
+        {
+            public Task<ExamResultSummaryDto> GetExamResultsAsync(int examId, int ownerUserId)
+            {
+                return Task.FromResult(new ExamResultSummaryDto
+                {
+                    ExamId = examId,
+                    ExamTitle = "=SUM(1,2)",
+                    TotalStudents = 1,
+                    TotalQuestions = 10,
+                    Students = new List<StudentResultItemDto>
+                    {
+                        new()
+                        {
+                            Rank = 1,
+                            StudentSheetId = 1,
+                            StudentNumber = "+9000",
+                            FullName = "=CMD|' /C calc'!A0",
+                            TcNo = "-12345678901",
+                            Booklet = "A",
+                            SectionResults = new List<SectionResultSummaryDto>()
                         }
                     }
                 });

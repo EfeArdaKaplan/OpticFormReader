@@ -2,6 +2,7 @@ using core.DTOs;
 using core.Entities;
 using core.interfaces;
 using core.Interfaces;
+using System.Text;
 using System.Text.RegularExpressions;
 
 namespace business.Services
@@ -56,19 +57,23 @@ namespace business.Services
                     throw new ArgumentException($"{file.FileName} boyutu 50 MB sınırını aşıyor.");
                 }
 
-                var extension = Path.GetExtension(file.FileName).ToLowerInvariant();
+                string safeOriginalName = Path.GetFileName(file.FileName ?? "optik_form.pdf");
+                var extension = Path.GetExtension(safeOriginalName).ToLowerInvariant();
                 if (!AllowedExtensions.Contains(extension))
                 {
                     throw new ArgumentException(
-                        $"{file.FileName} desteklenmeyen dosya türü. Sadece JPG, PNG ve PDF kabul edilir.");
+                        $"{safeOriginalName} desteklenmeyen dosya türü. Sadece JPG, PNG ve PDF kabul edilir.");
                 }
 
                 bool isPdf = extension == ".pdf";
                 string format = isPdf ? "PDF" : extension.TrimStart('.').ToUpperInvariant();
 
-                // Dosyayı belleğe alarak sayfa sayısını ve SeaweedFS kaydını hazırlıyoruz
+                // Dosyayı belleğe alarak Magic Bytes kontrolünü, sayfa sayısını ve SeaweedFS kaydını hazırlıyoruz
                 using var memoryStream = new MemoryStream();
                 await file.Content.CopyToAsync(memoryStream, cancellationToken);
+                memoryStream.Position = 0;
+
+                ValidateFileSignatureAndSafety(memoryStream, extension, safeOriginalName);
                 memoryStream.Position = 0;
 
                 int pageCount = 1;
@@ -90,7 +95,7 @@ namespace business.Services
                 var batch = new UploadBatch
                 {
                     ExamId = examId,
-                    OriginalFileName = file.FileName,
+                    OriginalFileName = safeOriginalName,
                     Format = format,
                     FileKey = fileKey,
                     PageCount = pageCount,
@@ -126,6 +131,79 @@ namespace business.Services
             result.TotalSheets = result.Sheets.Count;
 
             return result;
+        }
+
+        private static void ValidateFileSignatureAndSafety(MemoryStream stream, string extension, string fileName)
+        {
+            if (stream.Length < 4)
+            {
+                throw new ArgumentException($"{fileName} geçersiz veya bozuk bir dosya.");
+            }
+
+            byte[] header = new byte[Math.Min(512, (int)stream.Length)];
+            stream.Position = 0;
+            int read = stream.Read(header, 0, header.Length);
+
+            if (extension == ".pdf")
+            {
+                string headText = Encoding.ASCII.GetString(header, 0, Math.Min(read, 16));
+                if (!headText.Contains("%PDF-", StringComparison.Ordinal))
+                {
+                    throw new ArgumentException($"{fileName} geçerli bir PDF başlığı (%PDF-) içermiyor.");
+                }
+                return;
+            }
+
+            if (extension == ".svg")
+            {
+                stream.Position = 0;
+                using var reader = new StreamReader(stream, Encoding.UTF8, detectEncodingFromByteOrderMarks: true, bufferSize: 4096, leaveOpen: true);
+                string svgContent = reader.ReadToEnd();
+                if (!svgContent.Contains("<svg", StringComparison.OrdinalIgnoreCase))
+                {
+                    throw new ArgumentException($"{fileName} geçerli bir SVG içeriği değil.");
+                }
+                if (Regex.IsMatch(svgContent, @"<\s*script|javascript:|onload\s*=|onerror\s*=", RegexOptions.IgnoreCase))
+                {
+                    throw new ArgumentException($"{fileName} güvenlik nedeniyle reddedildi (SVG içerisinde çalıştırılabilir betik tespit edildi).");
+                }
+                return;
+            }
+
+            if (extension is ".jpg" or ".jpeg")
+            {
+                if (read < 3 || header[0] != 0xFF || header[1] != 0xD8 || header[2] != 0xFF)
+                {
+                    throw new ArgumentException($"{fileName} gerçek bir JPEG görseli değil.");
+                }
+                return;
+            }
+
+            if (extension == ".png")
+            {
+                if (read < 4 || header[0] != 0x89 || header[1] != 0x50 || header[2] != 0x4E || header[3] != 0x47)
+                {
+                    throw new ArgumentException($"{fileName} gerçek bir PNG görseli değil.");
+                }
+                return;
+            }
+
+            if (extension == ".bmp")
+            {
+                if (read < 2 || header[0] != 0x42 || header[1] != 0x4D)
+                {
+                    throw new ArgumentException($"{fileName} gerçek bir BMP görseli değil.");
+                }
+                return;
+            }
+
+            if (extension == ".webp")
+            {
+                if (read < 12 || header[0] != (byte)'R' || header[1] != (byte)'I' || header[2] != (byte)'F' || header[3] != (byte)'F')
+                {
+                    throw new ArgumentException($"{fileName} gerçek bir WEBP görseli değil.");
+                }
+            }
         }
 
         public async Task<List<UploadBatchDto>> GetBatchesByExamIdAsync(int examId, int ownerUserId)

@@ -1,4 +1,5 @@
-﻿using core.Interfaces;
+﻿using core.interfaces;
+using core.Interfaces;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using System.Security.Claims;
@@ -11,10 +12,12 @@ namespace WebApi.Controllers
     public class EvaluationController : ControllerBase
     {
         private readonly IEvaluationService _evaluationService;
+        private readonly IExamRepository _examRepository;
 
-        public EvaluationController(IEvaluationService evaluationService)
+        public EvaluationController(IEvaluationService evaluationService, IExamRepository examRepository)
         {
             _evaluationService = evaluationService;
+            _examRepository = examRepository;
         }
 
         private int GetCurrentUserId()
@@ -49,8 +52,15 @@ namespace WebApi.Controllers
         /// Sınav değerlendirmesinin anlık ilerleme durumunu döner (% tamamlandı, okunan kağıt sayısı).
         /// </summary>
         [HttpGet("progress")]
-        public IActionResult GetProgress(int examId)
+        public async Task<IActionResult> GetProgress(int examId)
         {
+            var userId = GetCurrentUserId();
+            var exam = await _examRepository.GetByIdAsync(examId);
+            if (exam == null || exam.OwnerUserId != userId)
+            {
+                return NotFound(new { message = "Sınav bulunamadı veya erişim yetkiniz yok." });
+            }
+
             var progress = _evaluationService.GetProgress(examId);
             return Ok(progress);
         }

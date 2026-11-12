@@ -15,10 +15,14 @@ namespace data.Security
         public const string Prefix = "$h256$";
 
         private static readonly byte[] MasterCipherKey = SHA256.HashData(
-            Encoding.UTF8.GetBytes("OptiMatrix_Enterprise_OMR_PII_Vault_CipherKey_2026_v1"));
+            Encoding.UTF8.GetBytes(
+                Environment.GetEnvironmentVariable("PII_MASTER_CIPHER_KEY")
+                ?? "OptiMatrix_Enterprise_OMR_PII_Vault_CipherKey_2026_v1"));
 
         private static readonly byte[] MasterHmacKey = SHA256.HashData(
-            Encoding.UTF8.GetBytes("OptiMatrix_Enterprise_OMR_PII_Vault_HmacKey_2026_v1"));
+            Encoding.UTF8.GetBytes(
+                Environment.GetEnvironmentVariable("PII_MASTER_HMAC_KEY")
+                ?? "OptiMatrix_Enterprise_OMR_PII_Vault_HmacKey_2026_v1"));
 
         public static string Protect(string? plainText, bool normalizeLower = false)
         {

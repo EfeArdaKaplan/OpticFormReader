@@ -9,7 +9,7 @@
   <img src="https://img.shields.io/badge/SMTP-6--Digit%20OTP-EA4335?style=for-the-badge&logo=gmail&logoColor=white" alt="Gmail SMTP OTP" />
   <img src="https://img.shields.io/badge/Storage-SeaweedFS%20S3-FF6F00?style=for-the-badge&logo=amazon-s3&logoColor=white" alt="SeaweedFS S3" />
   <img src="https://img.shields.io/badge/SignalR-WebSockets-F34F29?style=for-the-badge&logo=signalr&logoColor=white" alt="SignalR" />
-  <img src="https://img.shields.io/badge/Tests-20%2F20%20PASS-brightgreen?style=for-the-badge&logo=checkmarx&logoColor=white" alt="Tests" />
+  <img src="https://img.shields.io/badge/Tests-23%2F23%20PASS-brightgreen?style=for-the-badge&logo=checkmarx&logoColor=white" alt="Tests" />
   <img src="https://img.shields.io/badge/License-MIT-blue?style=for-the-badge" alt="License" />
 </p>
 
@@ -190,9 +190,9 @@ Geliştirme ortamınızda doğrudan çalıştırmak için:
 
 ---
 
-## 🧪 Birim & Entegrasyon Testleri (20/20 Başarılı)
+## 🧪 Birim & Entegrasyon Testleri (23/23 Başarılı)
 
-OptiMatrix OMR motorunun vektörel/raster okuma doğruluğu, boş/çift işaretleme tespiti, adaptif eşikleme, kimlik doğrulama (`AuthService`), cevap anahtarı yönetimi ve puan hesaplama servisleri xUnit ile test edilmektedir:
+OptiMatrix OMR motorunun vektörel/raster okuma doğruluğu, boş/çift işaretleme tespiti, adaptif eşikleme, kimlik doğrulama (`AuthService`), dosya imzası/SVG güvenlik doğrulaması, CSV Formula Injection koruması, PII `$h256$` deterministik şifreleme, cevap anahtarı yönetimi ve puan hesaplama servisleri xUnit ile test edilmektedir:
 
 ```bash
 dotnet test optic.slnx
@@ -200,7 +200,7 @@ dotnet test optic.slnx
 
 ```text
 Toplam 1 test dosyası belirtilen desenle eşleşti.
-Başarılı! - Başarısız: 0, Başarılı: 20, Atlanan: 0, Toplam: 20, Süre: 1 s (OpticEngine.Tests.dll)
+Başarılı! - Başarısız: 0, Başarılı: 23, Atlanan: 0, Toplam: 23, Süre: 2 s (OpticEngine.Tests.dll)
 ```
 
 ---

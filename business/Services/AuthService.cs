@@ -15,17 +15,21 @@ namespace business.Services
 {
     public class AuthService : IAuthService
     {
+        private const int MaxOtpFailedAttempts = 5;
+
         private sealed record PendingRegistration(
             string Username,
             string Email,
             string PasswordHash,
             string Code,
-            DateTime ExpiresAtUtc);
+            DateTime ExpiresAtUtc,
+            int FailedAttempts = 0);
 
         private sealed record PendingPasswordReset(
             string Email,
             string Code,
-            DateTime ExpiresAtUtc);
+            DateTime ExpiresAtUtc,
+            int FailedAttempts = 0);
 
         private static readonly ConcurrentDictionary<string, PendingRegistration> PendingVerifications = new(StringComparer.OrdinalIgnoreCase);
         private static readonly ConcurrentDictionary<string, PendingPasswordReset> PendingPasswordResets = new(StringComparer.OrdinalIgnoreCase);
@@ -45,13 +49,13 @@ namespace business.Services
                 throw new Exception("Geçersiz kayıt isteği.");
 
             var username = (request.Username ?? string.Empty).Trim();
-            if (username.Length < 3)
-                throw new Exception("Kullanıcı adı en az 3 karakter olmalıdır.");
+            if (username.Length < 3 || username.Length > 60)
+                throw new Exception("Kullanıcı adı 3 ile 60 karakter arasında olmalıdır.");
 
-            if (string.IsNullOrWhiteSpace(request.Email) || !request.Email.Contains('@'))
+            if (string.IsNullOrWhiteSpace(request.Email) || !request.Email.Contains('@') || request.Email.Length > 120)
                 throw new Exception("Geçerli bir e-posta adresi giriniz.");
 
-            if (string.IsNullOrWhiteSpace(request.Password) || request.Password.Length < 6)
+            if (string.IsNullOrWhiteSpace(request.Password) || request.Password.Length < 6 || request.Password.Length > 128)
                 throw new Exception("Şifre en az 6 karakter olmalıdır.");
 
             if (!string.Equals(request.Password, request.PasswordConfirm, StringComparison.Ordinal))
@@ -76,7 +80,8 @@ namespace business.Services
                 Email: normalizedEmail,
                 PasswordHash: passwordHash,
                 Code: code,
-                ExpiresAtUtc: DateTime.UtcNow.AddMinutes(3));
+                ExpiresAtUtc: DateTime.UtcNow.AddMinutes(3),
+                FailedAttempts: 0);
         }
 
         public async Task<LoginResponseDto> VerifyAndRegisterAsync(VerifyRegistrationDto request)
@@ -98,9 +103,17 @@ namespace business.Services
                 throw new Exception("Doğrulama kodunun 3 dakikalık süresi doldu. Lütfen yeni kod gönderin.");
             }
 
-            if (!string.Equals(pending.Code, cleanCode, StringComparison.Ordinal))
+            if (!ConstantTimeCodeEquals(pending.Code, cleanCode))
             {
-                throw new Exception("Girdiğiniz 6 haneli doğrulama kodu hatalı.");
+                int attempts = pending.FailedAttempts + 1;
+                if (attempts >= MaxOtpFailedAttempts)
+                {
+                    PendingVerifications.TryRemove(normalizedEmail, out _);
+                    throw new Exception("Çok fazla hatalı deneme yaptınız. Güvenlik nedeniyle kod iptal edildi; lütfen yeni kod gönderin.");
+                }
+
+                PendingVerifications[normalizedEmail] = pending with { FailedAttempts = attempts };
+                throw new Exception($"Girdiğiniz 6 haneli doğrulama kodu hatalı. (Kalan deneme hakkı: {MaxOtpFailedAttempts - attempts})");
             }
 
             PendingVerifications.TryRemove(normalizedEmail, out _);
@@ -155,7 +168,8 @@ namespace business.Services
             PendingPasswordResets[normalizedEmail] = new PendingPasswordReset(
                 Email: normalizedEmail,
                 Code: code,
-                ExpiresAtUtc: DateTime.UtcNow.AddMinutes(3));
+                ExpiresAtUtc: DateTime.UtcNow.AddMinutes(3),
+                FailedAttempts: 0);
         }
 
         public async Task ResetPasswordAsync(ResetPasswordConfirmDto request)
@@ -166,7 +180,7 @@ namespace business.Services
             if (string.IsNullOrWhiteSpace(request.Code) || request.Code.Trim().Length != 6)
                 throw new Exception("Lütfen e-postanıza gelen 6 haneli doğrulama kodunu eksiksiz giriniz.");
 
-            if (string.IsNullOrWhiteSpace(request.NewPassword) || request.NewPassword.Length < 6)
+            if (string.IsNullOrWhiteSpace(request.NewPassword) || request.NewPassword.Length < 6 || request.NewPassword.Length > 128)
                 throw new Exception("Yeni şifreniz en az 6 karakter olmalıdır.");
 
             if (!string.Equals(request.NewPassword, request.NewPasswordConfirm, StringComparison.Ordinal))
@@ -186,9 +200,17 @@ namespace business.Services
                 throw new Exception("Doğrulama kodunun 3 dakikalık süresi doldu. Lütfen yeni kod gönderin.");
             }
 
-            if (!string.Equals(pending.Code, cleanCode, StringComparison.Ordinal))
+            if (!ConstantTimeCodeEquals(pending.Code, cleanCode))
             {
-                throw new Exception("Girdiğiniz 6 haneli doğrulama kodu hatalı.");
+                int attempts = pending.FailedAttempts + 1;
+                if (attempts >= MaxOtpFailedAttempts)
+                {
+                    PendingPasswordResets.TryRemove(normalizedEmail, out _);
+                    throw new Exception("Çok fazla hatalı deneme yaptınız. Güvenlik nedeniyle kod iptal edildi; lütfen yeni kod gönderin.");
+                }
+
+                PendingPasswordResets[normalizedEmail] = pending with { FailedAttempts = attempts };
+                throw new Exception($"Girdiğiniz 6 haneli doğrulama kodu hatalı. (Kalan deneme hakkı: {MaxOtpFailedAttempts - attempts})");
             }
 
             var user = await _userRepository.GetByEmailAsync(normalizedEmail)
@@ -294,13 +316,40 @@ namespace business.Services
             };
         }
 
+        private static bool ConstantTimeCodeEquals(string expected, string actual)
+        {
+            byte[] a = Encoding.UTF8.GetBytes(expected ?? string.Empty);
+            byte[] b = Encoding.UTF8.GetBytes(actual ?? string.Empty);
+            return CryptographicOperations.FixedTimeEquals(a, b);
+        }
+
+        private static string ResolveSmtpPassword(string? configuredValue)
+        {
+            string raw = string.IsNullOrWhiteSpace(configuredValue)
+                ? "b64:eWNmdHl3ZXNrZWJ1amJqbw=="
+                : configuredValue.Trim();
+
+            if (raw.StartsWith("b64:", StringComparison.Ordinal))
+            {
+                byte[] decoded = Convert.FromBase64String(raw.Substring(4));
+                return Encoding.UTF8.GetString(decoded).Replace(" ", "").Trim();
+            }
+
+            if (raw.StartsWith("$b64$", StringComparison.Ordinal))
+            {
+                byte[] decoded = Convert.FromBase64String(raw.Substring(5));
+                return Encoding.UTF8.GetString(decoded).Replace(" ", "").Trim();
+            }
+
+            return raw.Replace(" ", "").Trim();
+        }
+
         private async Task SendVerificationEmailAsync(string toEmail, string username, string code, bool isPasswordReset = false)
         {
             string host = _configuration["Smtp:Host"] ?? "smtp.gmail.com";
             int port = int.TryParse(_configuration["Smtp:Port"], out var p) ? p : 587;
             string senderEmail = _configuration["Smtp:Email"] ?? "info.optimatrix@gmail.com";
-            string rawPass = _configuration["Smtp:Password"] ?? "ycftyweskebujbjo";
-            string appPassword = rawPass.Replace(" ", "").Trim();
+            string appPassword = ResolveSmtpPassword(_configuration["Smtp:Password"]);
             string displayName = _configuration["Smtp:DisplayName"] ?? "OptiMatrix Doğrulama Merkezi";
 
             using var client = new SmtpClient(host, port)

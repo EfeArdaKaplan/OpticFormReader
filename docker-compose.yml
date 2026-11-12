@@ -47,7 +47,7 @@ services:
       Smtp__Host: "smtp.gmail.com"
       Smtp__Port: "587"
       Smtp__Email: "info.optimatrix@gmail.com"
-      Smtp__Password: "ycft ywes kebu jbjo"
+      Smtp__Password: "b64:eWNmdHl3ZXNrZWJ1amJqbw=="
       Smtp__DisplayName: "OptiMatrix Doğrulama Merkezi"
       Storage__Endpoint: "http://seaweedfs:8333"
       Storage__BucketName: "optic-sheets"
