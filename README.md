@@ -50,11 +50,14 @@ Harici, hantal veya pahalı fiziksel optik okuyucu cihazlara gerek kalmadan; sta
   - **`UploadBatches` & `ExamTemplates` Tabloları:** `OriginalFileName`, `FileKey`, `InstitutionName`
 * Deterministik SIV mimarisi sayesinde veritabanı dökümlerinde hiçbir kişisel veri düz metin olarak okunamazken, e-posta ile indeksli sorgulama (`WHERE "Email" = '$h256$...'`) kayıpsız çalışır.
 
-### 4. 🔒 Kurumsal API Güvenliği & Oturum Yönetimi
+### 4. 🔒 Kurumsal API Güvenliği, Pentest Zırhı & Oturum Yönetimi
 * **İlk Açılışta Landing Page -> Güvenli Giriş Akışı:** Uygulama yeni sekmede açıldığında her zaman önce kurumsal **Tanıtım (Landing Page)** ekranını sunar, ardından güvenli **Giriş / Kayıt / Şifremi Unuttum** ekranına yönlendirir.
-* **JWT Yetkilendirme & Sliding Expiration:** Sınırlı süreli access token ve süresi dolmadan önce arka planda yenileyen sessiz yenileme (`POST /api/Auth/refresh`) mekanizması.
-* **Inactivity Timeout (Hareketsizlik Koruması):** 20 dakika boyunca klavye/fare hareketi olmayan tarayıcı oturumlarını otomatik sonlandırır.
-* **Rate Limiting & OWASP Güvenlik Başlıkları:** Brute-force ve DDoS saldırılarına karşı IP bazlı hız sınırlandırma (`FixedWindowLimiter`), `X-Content-Type-Options: nosniff`, `X-Frame-Options: DENY`, `X-XSS-Protection` ve `Referrer-Policy` korumaları.
+* **OTP Brute-Force Kilidi & Sabit Zamanlı Doğrulama:** 6 haneli doğrulama kodları `CryptographicOperations.FixedTimeEquals` ile zamanlama saldırılarına (timing attack) karşı korunur; **5 hatalı denemede** kod otomatik olarak imha edilir.
+* **İki Katmanlı Rate Limiting (`AuthStrict` & Global):** Genel API uç noktalarında dakikada 120 istek, kimlik doğrulama (`/api/Auth/*`) uç noktalarında ise kaba kuvvet saldırılarına karşı dakikada 15 istek (`AuthStrict`) sınırı uygulanır.
+* **BOLA / IDOR & SignalR Oda Yetkilendirmesi:** Tüm REST uç noktalarında ve `[Authorize]` korumalı `EvaluationHub` WebSocket odalarında (`JoinExamRoom`) sınav/kağıt sahipliği (`OwnerUserId`) çapraz doğrulanır.
+* **Dosya İmza Doğrulaması (Magic Bytes) & SVG XSS Kalkanı:** Yüklenen dosyaların yalnızca uzantısına değil gerçek ikili başlıklarına (`%PDF-`, JPEG `FF D8 FF`, PNG `89 50 4E 47`) bakılır; yürütülebilir betik (`<script>`, `onload=`, `javascript:`) içeren sahte görseller anında reddedilir.
+* **CSV Formula Injection & DOM XSS Koruması:** Excel dışa aktarımlarında `=`, `+`, `-`, `@` ile başlayan hücreler otomatik sanitize edilir; arayüz bildirimlerinde `textContent` ve `escapeHtml` kullanılır.
+* **JWT Sliding Expiration & Inactivity Timeout:** Sınırlı süreli access token sessizce yenilenir (`POST /api/Auth/refresh`), 20 dakika hareketsiz kalan oturumlar otomatik kapatılır.
 
 ### 5. 🖨️ QuestPDF ile Vektörel A4 Optik Form Üretimi & Canlı Karne UX
 * Piksel bozulması olmayan, baskıya hazır vektörel A4 optik sınav kağıdı üretimi (ÖSYM standartlarında dikey harf kodlamalı Ad-Soyad, 8/11 haneli Öğrenci No, A/B/C/D kitapçık ve çoklu ders sütunları).
